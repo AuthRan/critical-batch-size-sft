@@ -1,0 +1,123 @@
+# Paper 2 — The Critical Batch Size of Supervised Fine-Tuning
+
+Status: pre-registration draft v0, written 2026-10-19. Freeze as v1 (git tag) after the pilot grid, before any full-grid result is looked at.
+Author: Ashutosh Ranjan (solo, independent). Hardware: college PC <gpu-machine> reached over SSH (Windows 11, 2x RTX 2080 Ti 11 GB, Turing sm_75, torch 2.14+cu130, transformers 5.16, 34 GB free disk; GPU 1 also drives the display, so it has about 165 MB less free memory than GPU 0). It is a shared desktop with someone logged in at the console, so coordinate before multi-day runs.
+
+## 1. Question
+
+When a public language model is fine-tuned on instruction data:
+
+1. How does the optimal learning rate lr* move with batch size (measured in supervised tokens per optimizer step)?
+2. Where does the loss at lr*(B) start to degrade as B grows at a fixed data budget, i.e. what is the critical batch size (CBS) of SFT, and how does it change along the run?
+3. Can either be predicted before the sweep from the gradient noise scale B_simple (McCandlish et al. 2018), or does SFT need the direct empirical measurement that Merrill et al. (2025) argue pretraining needs?
+
+## 2. Why this is a gap (checked 2026-10-19)
+
+- Pretraining has the scaling rules (linear for SGD, square-root for Adam, non-monotone "surge" for Adam at large B), a measured CBS trajectory (near zero at init, rising, then plateau: Merrill et al. 2025, OLMo 1B/7B), and evidence that the noise-scale proxy is unreliable under Adam.
+- SFT has almost nothing. "Post-Training Science for SFT" (O'Neill et al., Sept 2026) sweeps lr x B on Qwen3/Llama up to 235B but reports optima, not the CBS, its trajectory, or a predictor, and says outright that the literature is "almost entirely about pretraining".
+- "Beware of the Batch Size" (Lee & Lee, Feb 2026) shows B is a first-order hyperparameter for LoRA and that LoRA-variant comparisons are confounded by it. It does not measure CBS or noise scale, and does not study full fine-tuning.
+- "Small Batch Size Training for LMs" (Marek et al., 2025) claims tiny batches are fine and gradient accumulation is wasteful, and proposes holding Adam's beta2 half-life fixed in tokens. If true for SFT, the CBS of SFT is tiny. Nobody has checked.
+- SFT starts from a converged model on a narrow corpus, so its gradient signal-to-noise structure is not pretraining's. Whether CBS is already large at step 0 (converged model, confident gradient) or near zero (big initial gradient, as in pretraining) is an open empirical question that decides whether single-GPU users should ever accumulate gradients.
+
+Closest prior work is a reading list, not a competitor. See section 9.
+
+## 3. Pre-registered hypotheses
+
+Each has a prediction and what would count as wrong. Decide the thresholds before the pilot; do not move them after.
+
+- H1 (shape). lr* rises with B up to a knee and then flattens or falls. Falsified if lr* is flat (within seed bound) across the whole 64x range in 5 or more of the 9 (model, dataset) settings.
+- H2 (the noise scale at the start of SFT is large, and grows along the run). Prediction: B_simple at step 0 is above 16k tokens for every model/corpus, i.e. above typical SFT batch sizes, and rises by 2x or more by the end of one epoch. Falsified if B_simple at step 0 is below 8k tokens in most settings, or falls along the run.
+  Revision note (2026-10-20, before the pilot, plan not yet frozen): v0 predicted "below 4k at step 0", by analogy with pretraining where the initial gradient is huge. That analogy was wrong: SFT starts at a low loss, so the mean gradient is small relative to per-token noise. The 30-step smoke run (SmolLM2-135M, dolly, B=4096) measured B_simple of about 99k tokens at step 0 (|G|^2 = 0.077, tr(Sigma) = 7.6e3, b_max = 8.4k, one draw) and could not resolve it at step 30. One noisy measurement is a reason to re-state the hypothesis, not evidence for it; the pilot decides.
+- H2b (two different critical batch sizes). At a fixed 1-epoch budget, the loss at lr*(B) will degrade at large B because the run has too few steps, not because of gradient noise; so the fixed-data CBS will sit well below the branched, fixed-token-budget CBS, and the gap will be larger on the smaller corpora (fewer steps per epoch). Falsified if the two CBS estimates agree within 2x on most settings.
+- H3 (predictor). The run-averaged noise scale predicts the empirically measured CBS within a factor of 2, with Spearman rho of at least 0.7 across settings. Falsified if rho is below 0.4 or the median ratio is outside [0.5, 2]. Either outcome is a result: "the proxy works in SFT" or "it fails in SFT too; use the direct measurement".
+- H4 (model size). CBS in tokens grows with model size. Prediction: the ordering 135M < 360M < 0.6B holds on 2 or more of the 3 corpora. Falsified if reversed on 2 or more.
+- H5 (beta2 confound). At fixed beta2 = 0.95, varying B by 64x changes Adam's second-moment half-life in tokens by 64x. Prediction: holding the half-life fixed in tokens (Marek et al.) moves lr* at the extreme B by less than 1.3x, i.e. the batch effect is not a beta2 artefact. Falsified if lr* moves by more than 2x.
+- H6 (same-corpus vs transfer). The gain from retuning lr* for the new B is same-corpus; on a corpus the run never saw it may not transfer. No direction claimed; we measure it.
+
+## 4. Design
+
+**Unit of batch size.** Supervised (response) tokens per optimizer step, exact and planned in advance. No packing: length-bucketed padded micro-batches are accumulated until the step's token target is hit, and the loss is the token-mean over the whole step (sum of token losses / step tokens). This sidesteps both the packing question and the "rows vs tokens" ambiguity.
+
+**Models (full fine-tuning, public, fit 11 GB).**
+- HuggingFaceTB/SmolLM2-135M
+- HuggingFaceTB/SmolLM2-360M
+- Qwen/Qwen3-0.6B-Base (the base checkpoint, not the post-trained one; needs 8-bit AdamW + gradient checkpointing, see section 7; already in the GPU machine's HF cache)
+- Stretch: Qwen/Qwen3-1.7B-Base (LoRA; full FT only if memory allows; also cached there). The family confound (SmolLM2 vs Qwen3) goes in Threats; the stretch point tests size within one family.
+
+**Corpora (3, independently collected, not sliced from one another, short responses to keep runs cheap).**
+- databricks/databricks-dolly-15k (15k, human-written)
+- OpenAssistant/oasst1, English first-turn best-ranked pairs (~10k, human-written)
+- openai/gsm8k train (7.5k, math; a deliberate distribution shift)
+- Optional 4th: yahma/alpaca-cleaned (52k, synthetic)
+Held-out: 1,000 examples per corpus, fixed split (seed 0), identical for every run. Every run is also scored on the other corpora's held-out sets (H6).
+
+**Axes.**
+- B: 7 values, log-spaced, 512 to 32,768 supervised tokens per step (64x).
+- lr: 7 values, log-spaced over 2 decades, centred per (model, dataset) after the pilot. The grid must bracket the minimum by at least one point on each side or the cell is re-run with an extended grid. Pilot evidence (2026-10-20, the 13 finished B = 512 runs of SmolLM2-360M x dolly, 3 seeds within 0.0003 nats of each other): lr 2.2e-5 is best, 1e-5 is worse by only 0.0012 (below the 0.005 resolution), 4.6e-5 by 0.010, 1e-4 by 0.045, 2.2e-4 by 0.15. The low side is not resolved, so configs/pilot_lowlr.json adds 1e-6, 2.2e-6 and 4.6e-6 at B = 512 and 1024 (18 runs, same ledger). The curve is far steeper above the optimum than below it, so the quadratic vertex fit will be checked against an argmin +/- 1 fit before the freeze (done 2026-10-24, see the fit-window note under Analysis).
+  Centring rule (2026-10-24, decided from the pilot): a single lr list per grid does not follow lr*, which moved 8x across the pilot's B range, and B = 512 needed the low-lr extension to be bracketed. Each new (model, dataset) grid therefore starts with its B = 4,096 column on the pilot's 2-decade list (1e-5 to 1e-3, plus 4.6e-6 and 2.2e-6 if the argmin is at the bottom), one seed. Every other B then gets 7 lrs at the standard 1/3-decade points, centred on the grid point nearest lr*(4096) x (B / 4096)^0.5, set through `lr_by_B` in the config. This covers +/- 1 decade around the prediction, so any alpha in [0, 1] stays bracketed at the extreme B. The bracketing rule above still applies.
+- Data budget: 1 epoch (steps vary with B, which is what practitioners do). Control: fixed step count at the two extreme B on the pilot setting, to separate "fewer steps" from "bigger batch".
+- Seeds: 3 at every point in the pilot setting; 3 at the 3 lrs nearest the minimum elsewhere; 1 otherwise. A difference smaller than the seed spread is not a result.
+- beta2 control (H5): rerun the extreme-B columns of the pilot setting with beta2 = 0.95^(B / B_ref), B_ref = 4,096.
+  Config note (2026-10-24): configs/control_beta2.json and configs/control_clip.json run B = 512 and 32,768 with 5 lrs each, centred on the pilot's lr* at that B (4.6e-6 to 1e-4 and 2.2e-5 to 4.6e-4), 3 seeds, 60 runs together. configs/noise_pilot.json was re-centred to 2.2e-5, 4.6e-5 and 1e-4 because the pilot puts lr*(4096) at 5.1e-5; the v0 list (4.6e-5 to 2.2e-4) had its top point 0.023 nats off the optimum. The fixed-step-count control is not configured yet: at B = 32,768 one epoch is only 32 steps, so matching steps means either many epochs at large B or a few dozen steps at small B, and both confound the comparison. It will be specified alongside the branched-CBS runs, which answer the same question (H2b) at a fixed token budget.
+
+**Fixed choices.** AdamW, beta1 0.9, beta2 0.95, weight decay 0.0, warmup 5% of steps, linear decay to zero, no gradient clipping, max sequence 1,024, max response 512 tokens, fp32 master weights with autocast (bf16 on Ampere or newer, fp16 + scaler on Turing; skipped scaler steps are counted and reported).
+  Clipping note (2026-10-20): v0 said clip 1.0 with a 10% rule. The smoke run showed the pre-clip gradient norm sitting at 1.0 to 1.1 at B = 4096, so clip 1.0 would act on most steps, and more so at small B where the norm is larger, which would compress the very batch-size effect under study. The main grids therefore run unclipped; a clip-1.0 control (the common practitioner setting) is run on the pilot's extreme-B columns and reported as a separate variant.
+
+**Measurements per run.** Held-out same-corpus loss (primary metric, token-mean); cross-corpus held-out losses; train-loss curve; pre-clip gradient norm per step; fraction of clipped and skipped steps; wall-clock.
+
+**Noise scale.** B_simple = tr(Sigma) / |G|^2, estimated by least squares on (b, |g_b|^2) pairs across micro-batches and their accumulated batch (McCandlish App. A generalised to unequal b). Numerator and denominator are fitted jointly, not as a ratio of noisy ratios. The intercept |G|^2 is only resolvable when the largest accumulated batch b_max is comparable to B_simple, so after the smoke run (B_simple near 1e5 with b_max = 8k: unresolved by the end of 30 steps) the estimator uses big batches of 65,536 supervised tokens, 4 per measurement, 8 micro-batches each. That costs about 0.26M tokens per measurement point, so it runs in dedicated runs (configs/noise_pilot.json: B = 4096, three lrs around the expected optimum, 2 seeds, points at 0/25/50/75/100%), not in every grid cell. A measurement whose fit gives |G|^2 <= 0 is reported as "unresolved, B_simple > b_max", never as a number.
+
+**Empirical CBS (direct measurement, Merrill-style).** From checkpoints at 0%, 25%, 50%, 75% of the pilot run: branch for a fixed token budget T at each B in the grid, with a 3-point lr mini-sweep per branch, and define CBS(t) as the largest B whose best branch loss is within epsilon = 0.005 nats of the smallest-B branch. Also report the fixed-data CBS from the main grid: the largest B whose loss at lr*(B) is within epsilon of the smallest B's.
+
+**Analysis (decided now).** lr* per cell is the vertex of a quadratic fitted to held-out loss vs log10(lr) on the minimum and its neighbours; bootstrap over seeds for the interval. Exponent alpha from weighted least squares of log lr* on log B below the knee, reported with its interval; report "no single exponent" if settings disagree beyond their intervals. Rank correlation between noise scale and CBS across settings for H3.
+  Divergence note (2026-10-21, before any cell fit had been used): a run whose held-out loss is non-finite (fp16 overflow, no clipping) counts as diverged. An lr with any diverged seed ranks below every finite lr, is left out of the quadratic fit, and a diverged neighbour of the argmin flags the cell "edge"; the tables report the count per lr. Reason: an lr that blows up in one seed of three is not a usable optimum, and averaging only the survivors would make unstable lrs look better than they are. First case: B = 512, lr 1e-3, seed 2 (166 skipped scaler steps, NaN by the end); seeds 1 and 3 finished at 2.75. Before this rule the NaN entered the seed mean and np.argmin returned it, so the B = 512 cell reported lr* = 1e-3; it now gives 1.71e-5. Both readings give the same lr* wherever the diverged lr is outside the fit window, as here.
+  Fit-window note (2026-10-24, from the pilot only, before the freeze and before any full-grid run exists): the planned check of the vertex fit against an argmin +/- 1 fit was run on the 146 pilot runs. The 5-point vertex sits 0.08 to 0.12 decades below the 3-point vertex in all 7 cells, because the curve is far steeper above the optimum than below it and the 5-point parabola is pulled toward the flat side. The seed bootstrap alone is about +/- 0.002 decades (seeds agree to 0.0004 nats), so it understated the real uncertainty by 50x. Rule from here: lr* is the vertex of the parabola through the argmin and its two neighbours; its interval is the seed bootstrap and the 3-vs-5-point difference added in quadrature (`lr_sys` in cells.json). Only cells flagged ok enter the alpha fit. Before this, an edge cell's interval was zero-width by construction, so inverse-width weighting gave it about 3,000x the weight of a real cell, and the partial pilot's alpha read 0.77 off one unbracketed point instead of 0.45. Pilot result under these rules (SmolLM2-360M x dolly, B 512 to 32,768, recorded here because it sets the grids): lr* rises from 1.6e-5 to 1.2e-4, alpha = 0.52 [0.48, 0.55], no knee; the loss at lr* is flat within 0.003 nats up to 16,384, and B = 32,768 sits 0.0052 above B = 512 (that column still lacks 10 runs). lr = 1e-3 diverges in every seed at B >= 8,192.
+
+## 5. Compute budget
+
+Measured on the RTX 2080 Ti (fp16, smoke run): SmolLM2-135M at B = 4096 runs about 1.3 s per step, so one dolly epoch is about 8 min at 135M and roughly 20 min at 360M; small-B cells are slower per token. Pilot: 147 + 18 runs at the measured 15 to 25 min each (section 7, memory bullet) = about 1 to 1.5 days on both GPUs. Per (model, corpus) grid afterwards: 49 cells + about 20 seed repeats = about 70 runs. 9 grids = about 630 runs = about 200 GPU-hours = about 4 days on two GPUs. Controls, noise-scale runs and branched CBS add about 2 days. Total about 7 days of both GPUs, which fits in November.
+
+Small-B runs cost the same FLOPs but are wall-clock slow (low utilisation). Start them first.
+
+## 6. Timeline
+
+- Week 1, Oct 19 to 25: read section 9 in full (not abstracts). Pipeline on the GPU box; unit tests green; one real smoke run per model. Freeze this file as v1.
+- Week 2, Oct 26 to Nov 1: pilot grid SmolLM2-360M x dolly, 3 seeds everywhere; noise scale along the run. Centre the lr grids. Tag pre-registration v1 in git. From here on the hypotheses do not move.
+- Weeks 3 to 5, Nov 2 to 22: the 9 grids, the fixed-steps control, the beta2 control.
+- Week 6, Nov 23 to 29: branched CBS on 3 settings; cross-corpus scoring.
+- Week 7, Nov 30 to Dec 6: analysis, figures, tables. Write Threats to Validity first.
+- Weeks 8 to 9, Dec 7 to 20: full draft (9 pages + appendix), code release, internal review.
+- Late Dec: arXiv v1 (cs.LG, cross-list cs.CL). Endorsement: ask your professor in December, or cold-email an author from section 9 with the PDF.
+- Targets: ICML 2027 (estimated Jan 22, 2027; confirm on icml.cc), else COLM 2027 (about March), TMLR any time. Workshop fallback at ICML or ICLR 2027.
+
+## 7. Risks and how they are handled
+
+- 0.6B full FT does not fit in 11 GB with fp32 AdamW (9.6 GB before activations). Use bitsandbytes 8-bit AdamW + gradient checkpointing. Confound control: run one 135M grid with both optimisers and confirm lr* agrees within the seed bound.
+- The RTX 2080 Ti (Turing) has no native bf16, and torch reports bf16 as "supported" only through slow emulation, so train.py picks fp16 + GradScaler from the compute capability rather than from that flag. Count skipped steps and report them. A cell with more than 1% skipped steps at lr* is flagged.
+- Two GPUs: run each grid as two shards (`--shard 0/2` on GPU 0, `--shard 1/2` on GPU 1) against one ledger. The sweep runner assigns jobs by index, so the shards never duplicate work. This halves the wall-clock estimate in section 5.
+- bitsandbytes is not installed on the GPU machine, and its Windows wheels target CUDA 12.x while the system torch is CUDA 13.0. The pilot (SmolLM2-360M, fp32 AdamW, about 6 GB) does not need it. Decide in week 2 for Qwen3-0.6B-Base: try bitsandbytes first, else a CUDA 12.x torch inside the venv, else drop to LoRA for the 0.6B point and say so in Threats.
+- Null result (lr* flat): still a paper, "below X tokens, batch size does not move the SFT optimum", plus the measured CBS. Pre-registration is what makes a null result publishable.
+- Logit memory dominates: the fp16 logits, their fp32 copy, the log-softmax and their gradients cost about 1 GB per 1k padded tokens at a 49k vocab, so SmolLM2-360M at a 4,096-token micro-batch sat at 11.0 of 11.3 GB and ran about 9x slower than its FLOPs predict (2026-10-20, first pilot cell). At a 2,048-token micro-batch the peak was still 10.6 to 10.7 GB (ledger `peak_mem_gb`), which WDDM pages into host RAM: GPU 0 took 14.5 min per B = 512 run, GPU 1 (which also drives the display) 25.5 min, and every seed-1 run on GPU 1 died inside its first 50 steps with "CUDA driver error: device not ready / Failed to create GPU mapping" at the logits cast, deterministically, because seed 1's plan hits a full micro-batch early. The micro-batch token budget is therefore 1,024 for every model from the 14th pilot run on; the 13 finished B = 512 runs used 2,048, and `args.micro_token_budget` in the ledger records which. The budget changes only how a step is split, never the gradient. Do not set PYTORCH_CUDA_ALLOC_CONF=expandable_segments on this machine: it produced the same mapping error on every GPU 0 job (2026-10-20).
+- The PC is shared and someone else is at its console. Both pilot shards stopped within 5 s of each other at 03:43 on 2026-10-20 with nothing in `runs/*.err` and no reboot (processes from 00:12 were still alive), so the trees were ended from the console. The sweep is resumable and the cost was the two runs in flight. When a check-in shows idle GPUs, compare the `runs/*.log` timestamps, and leave a note for the PC's other user before a multi-day grid.
+- Family confound in the size ladder. Named in Threats; the Qwen3-1.7B stretch point addresses it.
+- Lee & Lee (2026) v2 may contain more than its abstract. Read the full text in week 1 and adjust section 2 before freezing.
+
+## 8. Out of scope
+
+Packing (paper 1's territory; nothing here may depend on it), LoRA as a main axis (stretch only), RL post-training, models above 1.7B, production batch sizes above 32k tokens.
+
+## 9. Reading list (read in full, week 1)
+
+1. McCandlish, Kaplan, Amodei (2018). An Empirical Model of Large-Batch Training. arXiv:1812.06162. Noise scale; App. A estimator.
+2. Merrill, Arora, Groeneveld, Hajishirzi (2025). Critical Batch Size Revisited. NeurIPS 2025. arXiv:2505.23971. Direct CBS measurement; proxy unreliable under Adam.
+3. O'Neill, Jayasekara, Partridge (2026). Post-Training Science for Supervised Fine-Tuning. arXiv:2609.01244.
+4. Lee & Lee (2026). Beware of the Batch Size: Hyperparameter Bias in Evaluating LoRA. arXiv:2602.09492.
+5. Marek, Lotfi, Somasundaram, Wilson, Goldblum (2025). Small Batch Size Training for Language Models. arXiv:2507.07101. beta2 half-life in tokens.
+6. Li et al. (2024). Surge Phenomenon in Optimal Learning Rate and Batch Size Scaling. NeurIPS 2024. arXiv:2405.14578.
+7. Zhang et al. (2024). How Does Critical Batch Size Scale in Pre-training? arXiv:2410.21676.
+8. Malladi, Lyu, Panigrahi, Arora (2022). On the SDEs and Scaling Rules for Adaptive Gradient Algorithms. arXiv:2205.10287.
+9. Shallue et al. (2019). Measuring the Effects of Data Parallelism on Neural Network Training. JMLR.
+10. Schulman & Thinking Machines (2025). LoRA Without Regret. thinkingmachines.ai/blog/lora. LoRA loses more at large B.
+11. Chen, Villar, Hayou (2026). Learning Rate Scaling across LoRA Ranks. arXiv:2602.06204.
+12. Bergsma et al. (2025). Straight to Zero. Linear decay to zero as the schedule choice.
+13. AllenAI blog (2025). Revisiting critical batch size for large-batch OLMo pretraining. Noise scale and direct CBS do not match.

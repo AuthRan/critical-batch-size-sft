@@ -1,0 +1,12 @@
+{
+ "SmolLM2-360M|dolly|adamw|0|0.0": {
+  "alpha": NaN,
+  "alpha_lo": NaN,
+  "alpha_hi": NaN,
+  "cbs_fixed_data": 1024,
+  "lr_star_by_B": {
+   "512": 1.706355690689078e-05,
+   "1024": 2.2111247960612135e-05
+  }
+ }
+}

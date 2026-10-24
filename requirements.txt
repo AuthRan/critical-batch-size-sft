@@ -1,0 +1,11 @@
+# Install torch for your CUDA version first, e.g. (CUDA 12.x):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+torch>=2.3
+transformers>=4.46
+datasets>=2.20
+accelerate>=0.30
+numpy>=1.26
+matplotlib>=3.8
+pytest>=8
+# Needed only for the 0.6B / 1.7B models (8-bit AdamW):
+bitsandbytes>=0.43

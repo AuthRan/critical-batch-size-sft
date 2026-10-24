@@ -1,0 +1,14 @@
+{
+  "ledger": "runs/ledger.jsonl",
+  "models": ["HuggingFaceTB/SmolLM2-360M"],
+  "datasets": ["dolly"],
+  "tokens_per_step": [512, 1024],
+  "lr": [1e-6, 2.2e-6, 4.6e-6],
+  "seeds": [1, 2, 3],
+  "common": {
+    "epochs": 1.0,
+    "clip": 0,
+    "cross_eval": "oasst1,gsm8k",
+    "micro_token_budget": 1024
+  }
+}
