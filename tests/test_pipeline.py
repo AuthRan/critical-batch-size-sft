@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 import train as train_mod  # noqa: E402
 from data import encode_pairs, plan_steps, split_holdout  # noqa: E402
 from noise_scale import fit_rows  # noqa: E402
-from analyze import cell_fit, group_fit  # noqa: E402
+from analyze import branch_table, cell_fit, group_fit  # noqa: E402
 
 
 class ByteTok:
@@ -119,6 +119,22 @@ def test_cbs_compares_against_every_smaller_batch():
     assert g["cbs_fixed_data"] == 1024 and g["cbs_upper"] == 2048 and g["cbs_fixed_data_eps01"] == 4096
 
 
+def test_branch_cbs_per_checkpoint():
+    # one checkpoint, B0 = 1024; best-of-3-lr loss per B; B = 8192 is 0.006 worse than B = 2048, so CBS = 4096
+    recs = []
+    for B, best in {1024: 1.910, 2048: 1.908, 4096: 1.911, 8192: 1.914}.items():
+        for m, extra in ((1 / 2.15, 0.004), (1.0, 0.0), (2.15, 0.003)):
+            lr = (B / 1024) ** 0.5 * 2e-5 * m
+            recs.append({"holdout_loss": best + extra,
+                         "args": {"model": "x/M", "dataset": "d", "tokens_per_step": B, "lr": lr, "seed": 1},
+                         "branch": {"base_frac": 0.5, "delta_frac": 0.25, "base_B": 1024, "base_lr": 2e-5}})
+    rows = branch_table(recs)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["cbs"] == 4096 and r["cbs_upper"] == 8192 and r["cbs_eps01"] == 8192
+    assert r["best_loss"][2048] == 1.908 and all(abs(v - 1.0) < 1e-9 for v in r["best_mult"].values()) and not r["edge"]
+
+
 def test_noise_scale_recovers_synthetic():
     rng = np.random.default_rng(0)
     d, N = 20, 40000
@@ -162,6 +178,59 @@ def test_train_smoke(tmp_path):
     assert last["flag"] in ("ok", "unresolved")  # near an optimum the signal may be buried; that is flagged, not hidden
     last = json.loads(ledger.read_text(encoding="utf-8").splitlines()[-1])
     assert last["run_id"] == rec["run_id"] and last["holdout_loss"] == rec["holdout_loss"]
+
+
+def test_plan_keep_partial_uses_every_example():
+    enc = encode_pairs(synthetic_pairs(100), ByteTok(), 128, 64)
+    full = plan_steps(enc, 300, 512, seed=1, keep_partial=True)
+    assert sum(s.sup_tokens for s in full) == sum(e.sup_tokens for e in enc)
+    assert sum(s.sup_tokens for s in plan_steps(enc, 300, 512, seed=1)) < sum(e.sup_tokens for e in enc)
+
+
+def _branch_args(tmp_path, extra):
+    return train_mod.parse_args([
+        "--model", "tiny", "--dataset", "synthetic", "--seed", "1", "--max_len", "128", "--max_response", "64",
+        "--micro_token_budget", "512", "--n_holdout", "50", "--device", "cpu", "--precision", "fp32", "--log_every", "0",
+        "--clip", "0", "--ledger", str(tmp_path / "l.jsonl")] + extra)
+
+
+def test_branch_from_checkpoint(tmp_path):
+    from data import split_holdout
+
+    pairs, ck = synthetic_pairs(400), tmp_path / "ck"
+    base = train_mod.run(_branch_args(tmp_path, ["--tokens_per_step", "256", "--lr", "3e-3", "--save_at", "0,0.5",
+                                                 "--save_dir", str(ck)]), model=tiny_model(), tok=ByteTok(), pairs=pairs)
+    assert sorted(p.name for p in ck.iterdir()) == ["f0.00.pt", "f0.50.pt"]
+    meta = torch.load(ck / "f0.50.pt", map_location="cpu", weights_only=False)["meta"]
+    assert meta["step"] == round(0.5 * base["n_steps"]) and len(set(meta["remaining"])) == len(meta["remaining"])
+
+    # k = 2 branch: the window is the next 25% of the base's tokens, in base order; lr follows the base schedule in tokens
+    br = train_mod.run(_branch_args(tmp_path, ["--tokens_per_step", "512", "--lr", str(2 ** 0.5 * 3e-3),
+                                               "--init_from", str(ck / "f0.50.pt"), "--delta_frac", "0.25"]),
+                       model=tiny_model(), tok=ByteTok(), pairs=pairs)
+    b = br["branch"]
+    assert "__brf0.50__d0.25" in br["run_id"] and b["base_run_id"] == base["run_id"]
+    assert 0.25 * meta["tokens_total"] <= b["window_tokens"] < 0.25 * meta["tokens_total"] + 64
+    assert sum(br["curve"]["lr"]) > 0 and br["mean_tokens_per_step"] * br["n_steps"] == b["window_tokens"]
+    step_eq = meta["tokens_done"] / meta["tokens_total"] * meta["total"]
+    expect = 2 ** 0.5 * 3e-3 * max(0.0, 1 - (step_eq - meta["warmup"]) / (meta["total"] - meta["warmup"]))
+    assert abs(br["curve"]["lr"][0] - expect) < 1e-12
+
+    # weights really load: an lr-0 branch started from a perturbed model must score exactly as the checkpoint does
+    other = tiny_model()
+    with torch.no_grad():
+        for p in other.parameters():
+            p.add_(0.1)
+    still = train_mod.run(_branch_args(tmp_path, ["--tokens_per_step", "512", "--lr", "0", "--init_from",
+                                                  str(ck / "f0.50.pt"), "--delta_frac", "0.1"]),
+                          model=other, tok=ByteTok(), pairs=pairs)
+    ref = tiny_model()
+    ref.load_state_dict(torch.load(ck / "f0.50.pt", map_location="cpu", weights_only=False)["model"])
+    enc = encode_pairs(pairs, ByteTok(), 128, 64)
+    _, hold = split_holdout(len(enc), 50, seed=0)
+    want = train_mod.evaluate(ref, [enc[i] for i in hold], range(len(hold)), 0, torch.device("cpu"), 512,
+                              __import__("contextlib").nullcontext)
+    assert abs(still["holdout_loss"] - want) < 1e-6
 
 
 def test_fixed_steps_control_truncates(tmp_path):

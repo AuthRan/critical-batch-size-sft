@@ -24,7 +24,8 @@ EPS = 0.005  # nats, fixed in PLAN.md
 
 def load(ledger: str) -> list[dict]:
     recs = [json.loads(l) for l in open(ledger, encoding="utf-8") if l.strip()]
-    return [r for r in recs if r.get("holdout_loss") is not None and not r["args"].get("max_steps")]
+    return [r for r in recs if r.get("holdout_loss") is not None and not r["args"].get("max_steps")
+            and not r["args"].get("init_from")]
 
 
 def fit_lr_star(lrs, losses, half_window: int = 1):
@@ -110,7 +111,35 @@ def group_fit(pts, rng) -> dict:
             "lr_star_by_B": {int(B): p["lr_star"] for B, p in pts}}
 
 
-def main(ledger: str, out: str):
+def branch_table(recs: list[dict]) -> list[dict]:
+    """Branched CBS (PLAN.md section 4, Merrill et al. 2025): per (model, dataset, checkpoint, window), the best
+    held-out loss at each B over its lr mini-sweep, then the same CBS rule as the fixed-data grid."""
+    groups: dict[tuple, dict] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    for r in recs:
+        a, b = r["args"], r["branch"]
+        key = (a["model"].split("/")[-1], a["dataset"], round(b["base_frac"], 2), b["delta_frac"], b["base_B"], b["base_lr"])
+        groups[key][int(a["tokens_per_step"])][float(a["lr"])].append(float(r["holdout_loss"]))
+    rows = []
+    for key in sorted(groups):
+        m, d, frac, delta, B0, lr0 = key
+        best_loss, best_mult, edge = {}, {}, []
+        for B, by_lr in sorted(groups[key].items()):
+            lrs = sorted(by_lr)
+            means = [seed_mean(by_lr[lr]) for lr in lrs]
+            k = int(np.argmin(means))
+            best_loss[B] = means[k]
+            best_mult[B] = lrs[k] / ((B / B0) ** 0.5 * lr0)  # relative to Merrill's sqrt(k) rule
+            if len(lrs) > 1 and k in (0, len(lrs) - 1):
+                edge.append(B)
+        pts = [(B, {"loss_star": v}) for B, v in sorted(best_loss.items())]
+        cbs, upper = critical_batch(pts, EPS)
+        rows.append({"model": m, "dataset": d, "base_frac": frac, "delta_frac": delta, "cbs": int(cbs), "cbs_upper": upper,
+                     "cbs_eps01": int(critical_batch(pts, 0.01)[0]), "best_loss": best_loss, "best_mult": best_mult,
+                     "edge": edge})
+    return rows
+
+
+def main(ledger: str, out: str, branch_ledger: str = ""):
     recs = load(ledger)
     rng = np.random.default_rng(0)
     cells: dict[tuple, dict[float, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -151,6 +180,18 @@ def main(ledger: str, out: str):
         lines.append(f"| {m} | {d} | {variant} | {s['alpha']:.2f} | [{s['alpha_lo']:.2f}, {s['alpha_hi']:.2f}] | "
                      f"{s['cbs_fixed_data']} (next {s['cbs_upper'] or '-'}) | {s['cbs_fixed_data_eps01']} | {s['n_fit']} | {', '.join(map(str, s['excluded'])) or '-'} |")
 
+    if branch_ledger and Path(branch_ledger).exists():
+        brs = branch_table([r for r in (json.loads(l) for l in open(branch_ledger, encoding="utf-8") if l.strip())
+                            if r.get("branch") and r.get("holdout_loss") is not None])
+        lines += ["", "| model | dataset | checkpoint | window | CBS_branched (tokens) | CBS at eps 0.01 | best loss by B | "
+                  "best lr / sqrt rule by B | lr at sweep edge |", "|---|---|---|---|---|---|---|---|---|"]
+        for r in brs:
+            lines.append(f"| {r['model']} | {r['dataset']} | {r['base_frac']:.2f} | {r['delta_frac']:g} | "
+                         f"{r['cbs']} (next {r['cbs_upper'] or '-'}) | {r['cbs_eps01']} | "
+                         f"{', '.join(f'{B}: {v:.4f}' for B, v in r['best_loss'].items())} | "
+                         f"{', '.join(f'{B}: {v:.2f}' for B, v in r['best_mult'].items())} | "
+                         f"{', '.join(map(str, r['edge'])) or '-'} |")
+        summary["branches"] = brs
     Path(out).mkdir(parents=True, exist_ok=True)
     (Path(out) / "cells.json").write_text(json.dumps({k: {**v, "key": list(v["key"])} for k, v in results.items()}, indent=1))
     (Path(out) / "summary.json").write_text(json.dumps(summary, indent=1))
@@ -188,5 +229,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("ledger", nargs="?", default="runs/ledger.jsonl")
     ap.add_argument("--out", default="runs/analysis")
+    ap.add_argument("--branch_ledger", default="runs/branch_ledger.jsonl")
     a = ap.parse_args()
-    main(a.ledger, a.out)
+    main(a.ledger, a.out, a.branch_ledger)

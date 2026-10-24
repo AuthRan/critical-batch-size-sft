@@ -54,6 +54,14 @@ def parse_args(argv=None):
     p.add_argument("--ledger", default="runs/ledger.jsonl")
     p.add_argument("--run_id", default="")
     p.add_argument("--save_dir", default="", help="if set, save the final model here (for branched CBS)")
+    p.add_argument("--save_at", default="",
+                   help="with --save_dir: comma-separated fractions of the run at which to save a branch checkpoint "
+                        "(weights, optimizer, scaler, data cursor) instead of the final model")
+    p.add_argument("--init_from", default="", help="branch: start from this --save_at checkpoint (Merrill et al. 2025)")
+    p.add_argument("--delta_frac", type=float, default=0.25,
+                   help="branch: train on the next delta_frac of the base run's supervised tokens, in base order")
+    p.add_argument("--wait_for_init_h", type=float, default=0.0,
+                   help="branch: wait up to this many hours for --init_from to appear (the base run may be on the other GPU)")
     p.add_argument("--device", default="")
     p.add_argument("--log_every", type=int, default=50)
     return p.parse_args(argv)
@@ -65,6 +73,8 @@ def make_run_id(model: str, dataset: str, tokens_per_step: int, lr: float, seed:
     extra = extra or {}
     if extra.get("max_steps"):
         rid += f"__steps{extra['max_steps']}"
+    if extra.get("init_from"):
+        rid += f"__br{Path(extra['init_from']).stem}__d{extra.get('delta_frac', 0.25):g}"
     if extra.get("beta2_ref_tokens"):
         rid += f"__b2ref{extra['beta2_ref_tokens']}"
     if extra.get("clip", 1.0) == 0:
@@ -171,7 +181,28 @@ def run(args, model=None, tok=None, pairs=None) -> dict:
     train_enc = [enc[i] for i in train_idx]
     hold_enc = [enc[i] for i in hold_idx]
 
-    steps = plan_steps(train_enc, args.tokens_per_step, args.micro_token_budget, args.seed, args.epochs)
+    # Branch: same weights, optimizer state and data order as the base run at its checkpoint; the next
+    # delta_frac of the base's tokens, re-planned at this run's B with the trailing partial step kept.
+    branch, plan_enc = None, train_enc
+    if args.init_from:
+        deadline = time.time() + 3600 * args.wait_for_init_h
+        while not Path(args.init_from).exists() and time.time() < deadline:
+            time.sleep(30)
+        branch = torch.load(args.init_from, map_location="cpu", weights_only=False)
+        meta = branch["meta"]
+        if meta["n_train"] != len(train_enc):
+            raise RuntimeError(f"checkpoint was made on {meta['n_train']} training examples, this run has {len(train_enc)}")
+        model.load_state_dict(branch["model"])
+        budget, window, window_tokens = args.delta_frac * meta["tokens_total"], [], 0
+        for i in meta["remaining"]:
+            if window_tokens >= budget:
+                break
+            window.append(i)
+            window_tokens += train_enc[i].sup_tokens
+        plan_enc = [train_enc[i] for i in window]
+        steps = plan_steps(plan_enc, args.tokens_per_step, args.micro_token_budget, args.seed, 1.0, keep_partial=True)
+    else:
+        steps = plan_steps(train_enc, args.tokens_per_step, args.micro_token_budget, args.seed, args.epochs)
     if args.max_steps > 0:
         steps = steps[: args.max_steps]
     total = len(steps)
@@ -188,6 +219,30 @@ def run(args, model=None, tok=None, pairs=None) -> dict:
     else:
         opt = torch.optim.AdamW(params, lr=args.lr, betas=(args.beta1, beta2), weight_decay=args.weight_decay,
                                 fused=(device.type == "cuda"))
+    if branch is not None:
+        opt.load_state_dict(branch["opt"])  # Merrill et al. carry the optimizer state into the branch
+        if branch["scaler"]:
+            scaler.load_state_dict(branch["scaler"])
+        branch = {"meta": branch["meta"]}  # drop the host copy of the weights and optimizer state (~4 GB at 360M)
+
+    save_steps: dict[int, float] = {}
+    if args.save_at:
+        if not args.save_dir:
+            raise RuntimeError("--save_at needs --save_dir")
+        save_steps = {int(round(f * total)): f for f in (float(x) for x in args.save_at.split(",") if x.strip())}
+
+    def save_checkpoint(s: int):
+        path = Path(args.save_dir) / f"f{save_steps[s]:.2f}.pt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        meta = {"base_run_id": run_id, "step": s, "total": total, "warmup": warmup, "decay": args.decay, "lr": args.lr,
+                "tokens_per_step": args.tokens_per_step, "seed": args.seed, "n_train": len(train_enc),
+                "tokens_done": sum(st.sup_tokens for st in steps[:s]), "tokens_total": sum(st.sup_tokens for st in steps),
+                "remaining": [i for st in steps[s:] for mb in st.micro for i in mb]}
+        tmp = path.with_suffix(".tmp")  # write then rename, so a branch never reads a half-written file
+        torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "scaler": scaler.state_dict(), "meta": meta}, tmp)
+        tmp.replace(path)
+        saved.append(str(path))
+        print(f"  saved branch checkpoint at step {s}/{total} -> {path}", flush=True)
 
     # Noise-scale measurement: fixed-size big batches drawn with a separate seed, independent of the run's B.
     ns_steps: set[int] = set()
@@ -221,16 +276,26 @@ def run(args, model=None, tok=None, pairs=None) -> dict:
 
     curve_step, curve_loss, curve_gnorm, curve_lr = [], [], [], []
     ns_results: list[dict] = []
+    saved: list[str] = []
     clipped = skipped = 0
+    done_tokens = 0
     for s, st in enumerate(steps):
         if s in ns_steps:
             ns_results.append(measure_ns(s))
-        lr = lr_at(s, total, warmup, args.lr, args.decay)
+        if s in save_steps:
+            save_checkpoint(s)
+        if branch is not None:  # the base schedule's shape at this token position, times this branch's peak lr
+            m = branch["meta"]
+            pos = (m["tokens_done"] + done_tokens) / m["tokens_total"] * m["total"]
+            lr = lr_at(pos, m["total"], m["warmup"], args.lr, m["decay"])
+        else:
+            lr = lr_at(s, total, warmup, args.lr, args.decay)
+        done_tokens += st.sup_tokens
         for g in opt.param_groups:
             g["lr"] = lr
         step_loss = 0.0
         for mb in st.micro:
-            batch = collate(train_enc, mb, pad_id, device)
+            batch = collate(plan_enc, mb, pad_id, device)
             with autocast_ctx():
                 loss = sum_loss(model, batch) / st.sup_tokens
             scaler.scale(loss).backward()
@@ -265,7 +330,7 @@ def run(args, model=None, tok=None, pairs=None) -> dict:
         cross[name] = evaluate(model, c_enc, c_hold, pad_id, device, args.micro_token_budget, autocast_ctx)
         print(f"  held-out loss ({name}): {cross[name]:.4f}", flush=True)
 
-    if args.save_dir:
+    if args.save_dir and not args.save_at:
         Path(args.save_dir).mkdir(parents=True, exist_ok=True)
         model.save_pretrained(args.save_dir)
         if hasattr(tok, "save_pretrained"):
@@ -291,6 +356,11 @@ def run(args, model=None, tok=None, pairs=None) -> dict:
         "clipped_frac": clipped / total,
         "skipped_steps": skipped,
         "noise_scale": ns_results,
+        "saved": saved,
+        "branch": None if branch is None else {
+            "base_run_id": branch["meta"]["base_run_id"], "base_frac": branch["meta"]["step"] / branch["meta"]["total"],
+            "base_B": branch["meta"]["tokens_per_step"], "base_lr": branch["meta"]["lr"], "delta_frac": args.delta_frac,
+            "window_examples": len(plan_enc), "window_tokens": sum(e.sup_tokens for e in plan_enc)},
         "curve": {"step": curve_step[::thin], "loss": curve_loss[::thin], "gnorm": curve_gnorm[::thin], "lr": curve_lr[::thin]},
         "wall_s": time.time() - t0,
         "peak_mem_gb": (torch.cuda.max_memory_allocated(device) / 2**30) if device.type == "cuda" else None,

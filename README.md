@@ -64,12 +64,21 @@ python src/analyze.py runs/ledger.jsonl --out runs/analysis
 python src/train.py --model HuggingFaceTB/SmolLM2-135M --dataset dolly --tokens_per_step 4096 --lr 1e-4 --seed 1 --noise_scale_at 0,0.5,1
 ```
 
+## Branched CBS (Merrill et al. 2025 protocol, PLAN.md section 4)
+
+```
+python src/branch_configs.py --model HuggingFaceTB/SmolLM2-360M --dataset dolly --lr0 2.34e-5   # lr0 = lr*(1024) of that setting
+```
+
+That writes `configs/branch_<model>_<dataset>_base.json`, four checkpoint configs (`f0.00` to `f0.75`, 25% windows) and one Delta-sensitivity config (`f0.50_d0.125`). Put the base config first in the launch list on both GPUs. The base run saves its checkpoints to `runs/ckpt/<model>_<dataset>/`, and each branch waits up to 6 h for its checkpoint, so the other GPU can start on branches straight away. A checkpoint holds the weights plus AdamW state, about 4.3 GB at 360M. When `runs/branch_ledger.jsonl` has all 90 branch rows for a setting, delete its folder (`rmdir /s /q runs\ckpt\SmolLM2-360M_dolly`) before starting the next setting. `analyze.py` reads the branch ledger and adds the branched-CBS table.
+
 ## Layout
 
 - `src/data.py` — corpora, tokenisation, exact token-count step planning (no packing)
 - `src/noise_scale.py` — gradient noise scale estimator (McCandlish App. A, least-squares form)
 - `src/train.py` — one run; writes one JSON line to `runs/ledger.jsonl`
 - `src/sweep.py` — resumable grid runner
-- `src/analyze.py` — lr*(B) fits, exponent, fixed-data CBS, plot
+- `src/analyze.py` — lr*(B) fits, exponent, fixed-data CBS, branched CBS, plot
+- `src/branch_configs.py` — writes the base and branch configs for one setting
 - `tests/` — CPU tests with a tiny random model
 - `notes/` — reading notes, one file per paper

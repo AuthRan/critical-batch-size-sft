@@ -113,6 +113,7 @@ def plan_steps(
     seed: int,
     epochs: float = 1.0,
     micro_sup_cap: int | None = None,
+    keep_partial: bool = False,
 ) -> list[Step]:
     """Plan every optimizer step in advance.
 
@@ -121,7 +122,8 @@ def plan_steps(
     and split into micro-batches whose padded size (rows x max_len) stays within micro_token_budget
     and, if micro_sup_cap is given, whose supervised tokens stay within that cap (used by the
     noise-scale estimator to get several micro-batches per big batch).
-    The trailing partial step is dropped, so every step carries >= tokens_per_step.
+    The trailing partial step is dropped, so every step carries >= tokens_per_step, unless keep_partial
+    (branched runs: every branch must see exactly the same examples whatever its B).
     """
     rng = random.Random(seed)
     n = len(enc)
@@ -145,6 +147,8 @@ def plan_steps(
         if cur_sup >= tokens_per_step:
             steps.append(Step(_split_micro(enc, cur, micro_token_budget, micro_sup_cap), cur_sup))
             cur, cur_sup = [], 0
+    if keep_partial and cur:
+        steps.append(Step(_split_micro(enc, cur, micro_token_budget, micro_sup_cap), cur_sup))
     return steps
 
 
