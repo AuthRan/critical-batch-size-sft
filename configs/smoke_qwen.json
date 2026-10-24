@@ -1,0 +1,16 @@
+{
+  "ledger": "runs/smoke_ledger.jsonl",
+  "models": ["Qwen/Qwen3-0.6B-Base"],
+  "datasets": ["dolly"],
+  "tokens_per_step": [4096],
+  "lr": [2.2e-5],
+  "seeds": [1],
+  "common": {
+    "max_steps": 20,
+    "clip": 0,
+    "micro_token_budget": 512,
+    "optim": "adamw8bit",
+    "grad_checkpoint": true,
+    "log_every": 5
+  }
+}

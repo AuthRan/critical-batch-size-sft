@@ -1,0 +1,17 @@
+{
+  "ledger": "runs/ledger.jsonl",
+  "models": ["HuggingFaceTB/SmolLM2-135M", "HuggingFaceTB/SmolLM2-360M", "Qwen/Qwen3-0.6B-Base"],
+  "datasets": ["dolly", "oasst1", "gsm8k"],
+  "tokens_per_step": [4096],
+  "lr": [1e-5, 2.2e-5, 4.6e-5, 1e-4, 2.2e-4, 4.6e-4, 1e-3],
+  "seeds": [1],
+  "common": {
+    "epochs": 1.0,
+    "clip": 0,
+    "cross_eval": "dolly,oasst1,gsm8k",
+    "micro_token_budget": 1024
+  },
+  "per_model": {
+    "Qwen/Qwen3-0.6B-Base": {"micro_token_budget": 512, "optim": "adamw8bit", "grad_checkpoint": true}
+  }
+}
