@@ -6,7 +6,7 @@ Analysis choices are fixed in PLAN.md section 4 and must not be tuned to the dat
   lr*  = vertex of the quadratic in log10(lr) through the argmin and its two neighbours
   CI   = bootstrap over seeds (200 resamples), widened in quadrature by the 3-vs-5-point vertex difference
   alpha = weighted least squares of log lr* on log B
-  CBS_fixed_data = largest B whose loss at lr*(B) is within eps of the smallest B's
+  CBS_fixed_data = largest B whose loss at lr*(B) is within eps of every smaller B's (Merrill et al. 2025)
   diverged = a non-finite held-out loss; an lr with any diverged seed ranks below every finite lr
              and is never fitted (rule added 2026-10-21, see PLAN.md)
 """
@@ -73,6 +73,16 @@ def cell_fit(by_lr: dict[float, list[float]], rng, n_boot: int = 200):
             "n_lr": len(lrs), "seeds": int(min(len(v) for v in by_lr.values())), "diverged": diverged}
 
 
+def critical_batch(pts, eps: float):
+    """Merrill et al. 2025: the largest B whose loss is within eps of every smaller B's (rule added 2026-10-24).
+    Returns (cbs, the next B up as the interval's upper end, or None if cbs is the largest B)."""
+    Bs = [p[0] for p in pts]
+    losses = [p[1]["loss_star"] for p in pts]
+    ok = [i for i in range(len(Bs)) if all(losses[i] <= losses[j] + eps for j in range(i))]
+    k = max(ok)
+    return Bs[k], (int(Bs[k + 1]) if k + 1 < len(Bs) else None)
+
+
 def group_fit(pts, rng) -> dict:
     """pts: [(B, cell fit)] for one (model, dataset, variant). Exponent alpha and the fixed-data CBS.
     Only bracketed ('ok') cells enter the alpha fit: an edge cell's interval is zero-width by construction,
@@ -93,9 +103,9 @@ def group_fit(pts, rng) -> dict:
             ls_b = rng.uniform(lo_hi[:, 0], lo_hi[:, 1])
             boots.append(float(np.linalg.solve(X.T @ W @ X, X.T @ W @ ls_b)[1]))
         alpha_lo, alpha_hi = map(float, np.percentile(boots, [16, 84]))
-    base = pts[0][1]["loss_star"]
-    cbs = max((p[0] for p in pts if p[1]["loss_star"] <= base + EPS), default=pts[0][0])
-    return {"alpha": alpha, "alpha_lo": alpha_lo, "alpha_hi": alpha_hi, "cbs_fixed_data": int(cbs),
+    cbs, upper = critical_batch(pts, EPS)
+    return {"alpha": alpha, "alpha_lo": alpha_lo, "alpha_hi": alpha_hi, "cbs_fixed_data": int(cbs), "cbs_upper": upper,
+            "cbs_fixed_data_eps01": int(critical_batch(pts, 0.01)[0]),
             "n_fit": len(fit_pts), "excluded": [int(p[0]) for p in pts if p[1]["flag"] != "ok"],
             "lr_star_by_B": {int(B): p["lr_star"] for B, p in pts}}
 
@@ -125,8 +135,8 @@ def main(ledger: str, out: str):
                      f"{', '.join(f'{lr}: {n}' for lr, n in fit['diverged'].items()) or '-'} |")
 
     # exponent and fixed-data CBS per (model, dataset, variant)
-    lines += ["", "| model | dataset | variant | alpha | 68% CI | CBS_fixed_data (tokens) | n_B fitted | edge B (not fitted) |",
-              "|---|---|---|---|---|---|---|---|"]
+    lines += ["", "| model | dataset | variant | alpha | 68% CI | CBS_fixed_data (tokens) | CBS at eps 0.01 | n_B fitted | edge B (not fitted) |",
+              "|---|---|---|---|---|---|---|---|---|"]
     groups: dict[tuple, list] = defaultdict(list)
     for key, fit in ((k, v) for k, v in results.items()):
         m, d, B, optim, b2, clip = fit["key"]
@@ -139,7 +149,7 @@ def main(ledger: str, out: str):
         variant = optim + (f"+b2ref{b2}" if b2 else "") + ("+noclip" if clip == 0 else "")
         summary["|".join(map(str, g))] = s
         lines.append(f"| {m} | {d} | {variant} | {s['alpha']:.2f} | [{s['alpha_lo']:.2f}, {s['alpha_hi']:.2f}] | "
-                     f"{s['cbs_fixed_data']} | {s['n_fit']} | {', '.join(map(str, s['excluded'])) or '-'} |")
+                     f"{s['cbs_fixed_data']} (next {s['cbs_upper'] or '-'}) | {s['cbs_fixed_data_eps01']} | {s['n_fit']} | {', '.join(map(str, s['excluded'])) or '-'} |")
 
     Path(out).mkdir(parents=True, exist_ok=True)
     (Path(out) / "cells.json").write_text(json.dumps({k: {**v, "key": list(v["key"])} for k, v in results.items()}, indent=1))

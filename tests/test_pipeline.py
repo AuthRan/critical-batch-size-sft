@@ -110,6 +110,15 @@ def test_alpha_ignores_edge_cells():
     assert abs(g["alpha"] - 0.5) < 1e-6 and g["n_fit"] == 3 and g["excluded"] == [8192]
 
 
+def test_cbs_compares_against_every_smaller_batch():
+    # Merrill et al. 2025: largest B with L_B <= L_B' + eps for every smaller B'. A poor smallest-B cell (1.920)
+    # must not set the bar: against it, B=4096 (1.917) passes, but it is 0.007 worse than B=1024.
+    loss = {512: 1.920, 1024: 1.910, 2048: 1.916, 4096: 1.917, 8192: 1.930}
+    pts = [(B, {"B_real": B, "lr_star": 1e-5, "lr_lo": 1e-5, "lr_hi": 1e-5, "loss_star": v, "flag": "ok"}) for B, v in loss.items()]
+    g = group_fit(pts, np.random.default_rng(0))
+    assert g["cbs_fixed_data"] == 1024 and g["cbs_upper"] == 2048 and g["cbs_fixed_data_eps01"] == 4096
+
+
 def test_noise_scale_recovers_synthetic():
     rng = np.random.default_rng(0)
     d, N = 20, 40000
