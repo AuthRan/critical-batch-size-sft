@@ -55,13 +55,12 @@ def main(cfg_path: str, dry_run: bool = False, shard: str = "0/1"):
               for lr in lr_by_B.get(str(B), cfg.get("lr", [])) for s in cfg["seeds"]]
     for model, dataset, B, lr, seed in points:
         extra = {**common, **per_model.get(model, {})}
-        run_id = make_run_id(model, dataset, B, lr, seed, extra)
-        if run_id in done:
-            continue
-        jobs.append((run_id, model, dataset, B, lr, seed, extra))
+        jobs.append((make_run_id(model, dataset, B, lr, seed, extra), model, dataset, B, lr, seed, extra))
     # smallest B first: same FLOPs, worst wall-clock, so get them going
     jobs.sort(key=lambda j: (j[3], j[1], j[2], j[4], j[5]))
-    jobs = [j for k, j in enumerate(jobs) if k % n_shards == me]
+    # shard the full grid, then skip finished runs: a job's shard never depends on when a shard was (re)launched,
+    # so shards started at different times cannot run the same job (changed 2026-10-24; before, it sharded the remainder)
+    jobs = [j for k, j in enumerate(jobs) if k % n_shards == me and j[0] not in done]
     print(f"{len(jobs)} jobs to run on shard {me}/{n_shards}, {len(done)} already in {ledger}", flush=True)
     for k, (run_id, model, dataset, B, lr, seed, extra) in enumerate(jobs, 1):
         cmd = [sys.executable, str(Path(__file__).resolve().parent / "train.py"),
