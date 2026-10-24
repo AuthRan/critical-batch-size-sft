@@ -4,8 +4,9 @@
 
 Writes configs/branch_<model>_<dataset>_base.json (B0 = 1,024 at lr0, checkpoints at 0/25/50/75%) and one config per
 checkpoint: B = 1,024 to 32,768, lr = sqrt(B / B0) * lr0 * {1/2.15, 1, 2.15}, the next 25% of the epoch; plus the
-Delta-sensitivity config (12.5% window at the 50% checkpoint). Launch the base config first on both shards, then
-the branch configs: each branch waits for its checkpoint.
+Delta-sensitivity config (12.5% window at the 50% checkpoint). Queue the base config well before the branch configs
+(e.g. base, then other work, then branches), so the checkpoints exist when the branches start. A branch waits at most
+1 h for a missing checkpoint and then fails, so a base run that could not save costs an hour, not a night.
 """
 from __future__ import annotations
 
@@ -38,7 +39,7 @@ def write(model: str, dataset: str, lr0: float, out_dir: str = "configs", extra:
         dump(f"f{f:.2f}_d{delta:g}", {"ledger": "runs/branch_ledger.jsonl", "models": [model], "datasets": [dataset],
                                        "tokens_per_step": BS, "lr_by_B": lr_by_B, "seeds": [1],
                                        "common": {**common, "init_from": f"{ck}/f{f:.2f}.pt", "delta_frac": delta,
-                                                  "wait_for_init_h": 6}})
+                                                  "wait_for_init_h": 1}})
     return out
 
 

@@ -55,6 +55,6 @@
     "micro_token_budget": 1024,
     "init_from": "runs/ckpt/SmolLM2-360M_dolly/f0.00.pt",
     "delta_frac": 0.25,
-    "wait_for_init_h": 6
+    "wait_for_init_h": 1
   }
 }
