@@ -22,8 +22,18 @@ import numpy as np
 EPS = 0.005  # nats, fixed in PLAN.md
 
 
+def read_ledger(path: str) -> list[dict]:
+    """First row per run_id: the sweep code before 2026-10-24 13:17 could run a job on both GPUs (PLAN.md section 10)."""
+    seen, out = set(), []
+    for l in open(path, encoding="utf-8"):
+        if l.strip() and (r := json.loads(l))["run_id"] not in seen:
+            seen.add(r["run_id"])
+            out.append(r)
+    return out
+
+
 def load(ledger: str) -> list[dict]:
-    recs = [json.loads(l) for l in open(ledger, encoding="utf-8") if l.strip()]
+    recs = read_ledger(ledger)
     return [r for r in recs if r.get("holdout_loss") is not None and not r["args"].get("max_steps")
             and not r["args"].get("init_from")]
 
@@ -181,8 +191,7 @@ def main(ledger: str, out: str, branch_ledger: str = ""):
                      f"{s['cbs_fixed_data']} (next {s['cbs_upper'] or '-'}) | {s['cbs_fixed_data_eps01']} | {s['n_fit']} | {', '.join(map(str, s['excluded'])) or '-'} |")
 
     if branch_ledger and Path(branch_ledger).exists():
-        brs = branch_table([r for r in (json.loads(l) for l in open(branch_ledger, encoding="utf-8") if l.strip())
-                            if r.get("branch") and r.get("holdout_loss") is not None])
+        brs = branch_table([r for r in read_ledger(branch_ledger) if r.get("branch") and r.get("holdout_loss") is not None])
         lines += ["", "| model | dataset | checkpoint | window | CBS_branched (tokens) | CBS at eps 0.01 | best loss by B | "
                   "best lr / sqrt rule by B | lr at sweep edge |", "|---|---|---|---|---|---|---|---|---|"]
         for r in brs:

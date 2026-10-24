@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 import train as train_mod  # noqa: E402
 from data import encode_pairs, plan_steps, split_holdout  # noqa: E402
 from noise_scale import fit_rows  # noqa: E402
-from analyze import branch_table, cell_fit, group_fit  # noqa: E402
+from analyze import branch_table, cell_fit, group_fit, read_ledger  # noqa: E402
 
 
 class ByteTok:
@@ -133,6 +133,14 @@ def test_branch_cbs_per_checkpoint():
     r = rows[0]
     assert r["cbs"] == 4096 and r["cbs_upper"] == 8192 and r["cbs_eps01"] == 8192
     assert r["best_loss"][2048] == 1.908 and all(abs(v - 1.0) < 1e-9 for v in r["best_mult"].values()) and not r["edge"]
+
+
+def test_ledger_keeps_first_row_per_run(tmp_path):
+    # the pre-13:17 sweep could run a job on both GPUs; the second row must not count as an extra seed
+    p = tmp_path / "l.jsonl"
+    p.write_text("".join(json.dumps({"run_id": rid, "holdout_loss": v}) + "\n"
+                         for rid, v in (("a", 1.91), ("b", 1.92), ("a", 1.93))) + "\n", encoding="utf-8")
+    assert [(r["run_id"], r["holdout_loss"]) for r in read_ledger(str(p))] == [("a", 1.91), ("b", 1.92)]
 
 
 def test_noise_scale_recovers_synthetic():

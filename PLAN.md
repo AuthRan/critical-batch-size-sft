@@ -138,4 +138,6 @@ Read before the freeze (2026-10-24, notes in `notes/`): 2, 3, 4, 5, 6, 7 and 14.
 
 ## 10. Deviations after v1
 
-None yet. Each entry: date, what changed, why, and whether any result had been seen when it was decided.
+Each entry: date, what changed, why, and whether any result had been seen when it was decided.
+
+1. **2026-10-24, sweep sharding (operational, nothing measured changes).** The two sweeps launched at 12:51 ran the sweep code from before commit e6fcb6d. That code split each config's *unfinished* jobs between the GPUs at the moment each GPU reached the config. The GPUs reached the later configs (`pilot_lowlr`, `noise_pilot`, `control_beta2`, `control_clip`) at different times, so some jobs went to neither GPU and some to both. Found from row counts (the noise ledger had 5 of 6 rows with no failed run); no result from those configs had been looked at. Fix: both sweeps are stopped and relaunched on the current code, which assigns jobs from the full grid and so runs every skipped job exactly once; `analyze.py` keeps the first ledger row of any run_id that ran twice. The pilot grid itself was unaffected: both GPUs started it at the same moment.
