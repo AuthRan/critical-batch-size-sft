@@ -15,8 +15,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import train as train_mod  # noqa: E402
 from data import encode_pairs, plan_steps, split_holdout  # noqa: E402
-from noise_scale import fit_rows  # noqa: E402
-from analyze import branch_table, cell_fit, group_fit, read_ledger  # noqa: E402
+from noise_scale import collect_rows, fit_rows  # noqa: E402
+from analyze import branch_table, cell_fit, group_fit, noise_table, read_ledger  # noqa: E402
 
 
 class ByteTok:
@@ -165,6 +165,39 @@ def test_noise_scale_recovers_synthetic():
     assert fit["flag"] == "ok"
     assert abs(fit["trSigma"] - 80.0) / 80.0 < 0.05
     assert abs(fit["B_simple"] - true_B) / true_B < 0.3, (fit, true_B)
+
+
+def test_noise_rows_come_from_round_robin_sub_batches():
+    # micro-batches arrive length-sorted, so a row is a sub-batch dealt every n_groups-th micro-batch, not one micro-batch
+    torch.manual_seed(0)
+    X, y = torch.randn(12, 3), torch.randn(12)
+    model = torch.nn.Linear(3, 1, bias=False)
+
+    def loss_fn(m, idx):
+        return ((m(X[idx]).squeeze(-1) - y[idx]) ** 2).sum()
+
+    micro = [torch.arange(0, 2), torch.arange(2, 5), torch.arange(5, 6), torch.arange(6, 9), torch.arange(9, 12)]
+    rows = collect_rows(model, [[(idx, len(idx)) for idx in micro]], loss_fn, n_groups=2, loss_scale=8.0)
+
+    def g2(idx):
+        model.zero_grad()
+        (loss_fn(model, idx) / len(idx)).backward()
+        return float((model.weight.grad ** 2).sum())
+
+    want = [(6, g2(torch.cat(micro[0::2]))), (6, g2(torch.cat(micro[1::2]))), (12, g2(torch.arange(12)))]
+    assert [b for b, _ in rows] == [b for b, _ in want]
+    assert np.allclose([v for _, v in rows], [v for _, v in want], rtol=1e-5)
+
+
+def test_noise_table_skips_v1_points_and_averages_parts():
+    pt = lambda f, G2, trS: {"frac": f, "G2": G2, "trSigma": trS, "B_simple": trS / G2 if G2 > 0 else float("inf"),
+                             "b_max": 65536, "n_groups": 8}
+    v1 = {"frac": 0.5, "G2": -17.9, "trSigma": 9549.0, "B_simple": float("inf"), "b_max": 65735}
+    rec = {"args": {"model": "x/M", "dataset": "d", "lr": 1e-4, "seed": 1},
+           "noise_scale": [pt(0.0, 0.1, 1e4), v1, pt(1.0, -0.01, 9e3)]}
+    (o,) = noise_table([rec])
+    assert o["by_frac"] == {0.0: 1e5, 1.0: float("inf")}
+    assert abs(o["avg"] - 9.5e3 / 0.045) < 1e-6  # mean tr(Sigma) / mean |G|^2, not a mean of ratios
 
 
 def test_train_smoke(tmp_path):

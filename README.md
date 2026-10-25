@@ -35,8 +35,10 @@ Copy results back to the laptop with:
 
 ```
 scp <user>@<gpu-host>:<home>/paper2_sft_cbs/runs/ledger.jsonl "D:\Research paper\Paper 2\runs\ledger_remote_snapshot.jsonl"
-scp <user>@<gpu-host>:<home>/paper2_sft_cbs/runs/noise_ledger.jsonl "D:\Research paper\Paper 2\runs\noise_ledger_remote_snapshot.jsonl"
+scp <user>@<gpu-host>:<home>/paper2_sft_cbs/runs/noise2_ledger.jsonl "D:\Research paper\Paper 2\runs\noise2_ledger_remote_snapshot.jsonl"
 ```
+
+`noise_ledger.jsonl` holds the v1 noise-scale estimator's runs, which are not used (PLAN.md section 10, deviation 2); `noise2_ledger.jsonl` holds the corrected estimator's. Analyse with `python src/analyze.py runs/ledger_remote_snapshot.jsonl --noise_ledger runs/noise2_ledger_remote_snapshot.jsonl`.
 
 ## Setup on any other machine
 

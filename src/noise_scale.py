@@ -26,12 +26,16 @@ def fit_rows(rows) -> dict:
     return {"G2": G2, "trSigma": trS, "B_simple": float("inf"), "flag": "unresolved", "b_max": b_max, "n_rows": int(len(b))}
 
 
-def collect_rows(model, big_batches, loss_fn, params=None, loss_scale: float = 1.0):
+def collect_rows(model, big_batches, loss_fn, n_groups: int, params=None, loss_scale: float = 1.0):
     """Collect (b, |g_b|^2) rows.
 
-    big_batches: list of lists of (batch, b). loss_fn(model, batch) must return the SUM of token
-    losses for that micro-batch and b is its number of supervised tokens. Each inner list is
-    accumulated (token-weighted) into one big batch, which contributes one more row.
+    big_batches: list of lists of (batch, b), the memory micro-batches of each big batch. loss_fn(model, batch)
+    must return the SUM of token losses for that micro-batch and b is its number of supervised tokens. The
+    micro-batches are dealt round-robin into n_groups sub-batches, each accumulated in p.grad into one row; the
+    big batch gives one more row. Rows are not taken per micro-batch: the planner sorts a step's examples by
+    length before cutting micro-batches, so a micro-batch's size tracks its examples' length, and a 1/b fit
+    across micro-batches measures how the gradient depends on length (PLAN.md section 10, deviation 2).
+    Dealing the length-sorted list round-robin gives every sub-batch the big batch's mix of lengths.
     loss_scale guards fp16 underflow: the loss is multiplied by it and the gradients divided back.
     """
     if params is None:
@@ -42,18 +46,20 @@ def collect_rows(model, big_batches, loss_fn, params=None, loss_scale: float = 1
     for big in big_batches:
         B = sum(b for _, b in big)
         acc = [torch.zeros_like(p, dtype=torch.float32) for p in params]
-        for batch, b in big:
+        for grp in (big[k::n_groups] for k in range(min(n_groups, len(big)))):
+            bg = sum(b for _, b in grp)
+            s = loss_scale * len(grp)  # keeps each micro-batch's fp16 loss multiplier near loss_scale / b
             model.zero_grad(set_to_none=True)
-            loss = loss_fn(model, batch) / b * loss_scale
-            loss.backward()
+            for batch, _ in grp:
+                (loss_fn(model, batch) * (s / bg)).backward()
             g2 = 0.0
             for p, a in zip(params, acc):
                 if p.grad is None:
                     continue
-                g = p.grad.float() / loss_scale
+                g = p.grad.float() / s
                 g2 += float((g * g).sum())
-                a.add_(g, alpha=b / B)
-            rows.append((b, g2))
+                a.add_(g, alpha=bg / B)
+            rows.append((bg, g2))
         G2 = sum(float((a * a).sum()) for a in acc)
         rows.append((B, G2))
         del acc

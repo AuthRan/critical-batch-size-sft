@@ -50,7 +50,8 @@ def parse_args(argv=None):
     p.add_argument("--noise_scale_at", default="", help="comma-separated fractions of training, e.g. 0,0.1,0.25,0.5,0.75,1")
     p.add_argument("--noise_scale_tokens", type=int, default=8192, help="supervised tokens per big batch in the estimator")
     p.add_argument("--noise_scale_big_batches", type=int, default=8)
-    p.add_argument("--noise_scale_micro_per_big", type=int, default=8)
+    p.add_argument("--noise_scale_micro_per_big", type=int, default=8,
+                   help="sub-batches per big batch, each dealt several memory micro-batches (one row each)")
     p.add_argument("--ledger", default="runs/ledger.jsonl")
     p.add_argument("--run_id", default="")
     p.add_argument("--save_dir", default="", help="if set, save the final model here (for branched CBS)")
@@ -262,10 +263,13 @@ def run(args, model=None, tok=None, pairs=None) -> dict:
             with autocast_ctx():
                 return sum_loss(m, batch)
 
-        rows = collect_rows(model, ns_batches, loss_fn, params=params, loss_scale=(1024.0 if prec == "fp16" else 1.0))
+        rows = collect_rows(model, ns_batches, loss_fn, args.noise_scale_micro_per_big, params=params,
+                            loss_scale=(1024.0 if prec == "fp16" else 1.0))
         r = fit_rows(rows)
         r["step"] = step
         r["frac"] = step / max(1, total)
+        r["n_groups"] = args.noise_scale_micro_per_big  # absent in the v1 estimator's rows
+        r["rows"] = [[int(b), g2] for b, g2 in rows]
         print(f"  noise scale at step {step}/{total}: B_simple={r['B_simple']:.0f} tokens [{r['flag']}] "
               f"(|G|^2={r['G2']:.3e}, trS={r['trSigma']:.3e}, b_max={r['b_max']:.0f})", flush=True)
         return r

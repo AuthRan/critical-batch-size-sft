@@ -149,7 +149,24 @@ def branch_table(recs: list[dict]) -> list[dict]:
     return rows
 
 
-def main(ledger: str, out: str, branch_ledger: str = ""):
+def noise_table(recs: list[dict]) -> list[dict]:
+    """Per run: B_simple at each measured fraction and the run average, mean tr(Sigma) / mean |G|^2 over the points
+    (numerator and denominator averaged separately, McCandlish App. A). v1-estimator points (no n_groups) are
+    skipped: they fit across length-sorted micro-batches (PLAN.md section 10, deviation 2)."""
+    out = []
+    for r in recs:
+        pts = [m for m in r.get("noise_scale") or [] if m.get("n_groups")]
+        if not pts:
+            continue
+        a = r["args"]
+        G2, trS = float(np.mean([m["G2"] for m in pts])), float(np.mean([m["trSigma"] for m in pts]))
+        out.append({"model": a["model"].split("/")[-1], "dataset": a["dataset"], "lr": a["lr"], "seed": a["seed"],
+                    "by_frac": {round(m["frac"], 2): m["B_simple"] for m in pts}, "b_max": max(m["b_max"] for m in pts),
+                    "avg": trS / G2 if G2 > 0 else float("inf")})
+    return sorted(out, key=lambda o: (o["model"], o["dataset"], o["lr"], o["seed"]))
+
+
+def main(ledger: str, out: str, branch_ledger: str = "", noise_ledger: str = ""):
     recs = load(ledger)
     rng = np.random.default_rng(0)
     cells: dict[tuple, dict[float, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -201,6 +218,20 @@ def main(ledger: str, out: str, branch_ledger: str = ""):
                          f"{', '.join(f'{B}: {v:.2f}' for B, v in r['best_mult'].items())} | "
                          f"{', '.join(map(str, r['edge'])) or '-'} |")
         summary["branches"] = brs
+
+    ns = noise_table(read_ledger(noise_ledger)) if noise_ledger and Path(noise_ledger).exists() else []
+    if ns:
+        def fmt(v, b_max):  # an unresolved fit (|G|^2 <= 0) is a lower bound, never a number (PLAN.md section 4)
+            return f">{b_max / 1000:.0f}k" if not np.isfinite(v) else f"{v / 1000:.1f}k"
+
+        fracs = sorted({f for o in ns for f in o["by_frac"]})
+        lines += ["", "| model | dataset | lr | seed | " + " | ".join(f"B_simple at {f:g}" for f in fracs) + " | run average |",
+                  "|---|---|---|---|" + "---|" * (len(fracs) + 1)]
+        for o in ns:
+            lines.append(f"| {o['model']} | {o['dataset']} | {o['lr']:.2e} | {o['seed']} | "
+                         + " | ".join(fmt(o["by_frac"][f], o["b_max"]) if f in o["by_frac"] else "-" for f in fracs)
+                         + f" | {fmt(o['avg'], o['b_max'])} |")
+        summary["noise"] = ns
     Path(out).mkdir(parents=True, exist_ok=True)
     (Path(out) / "cells.json").write_text(json.dumps({k: {**v, "key": list(v["key"])} for k, v in results.items()}, indent=1))
     (Path(out) / "summary.json").write_text(json.dumps(summary, indent=1))
@@ -239,5 +270,6 @@ if __name__ == "__main__":
     ap.add_argument("ledger", nargs="?", default="runs/ledger.jsonl")
     ap.add_argument("--out", default="runs/analysis")
     ap.add_argument("--branch_ledger", default="runs/branch_ledger.jsonl")
+    ap.add_argument("--noise_ledger", default="runs/noise2_ledger.jsonl")
     a = ap.parse_args()
-    main(a.ledger, a.out, a.branch_ledger)
+    main(a.ledger, a.out, a.branch_ledger, a.noise_ledger)
