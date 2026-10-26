@@ -3,6 +3,7 @@
   python src/sweep.py configs/pilot.json
   python src/sweep.py configs/pilot.json --shard 0/2     # on GPU 0, with --shard 1/2 on GPU 1
   python src/sweep.py configs/pilot.json configs/pilot_lowlr.json --shard 0/2   # configs run back to back
+  python src/sweep.py configs/grid_a.json --shard queue     # on both GPUs: each takes the next unclaimed job
 
 Each job is a subprocess so that one crash (e.g. OOM) does not take the sweep down.
 Re-running the same command resumes where it left off.
@@ -11,6 +12,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -31,6 +33,52 @@ def done_ids(ledger: str) -> set[str]:
     return ids
 
 
+def pid_alive(pid: int) -> bool:
+    if os.name == "nt":  # os.kill(pid, 0) would terminate the process on Windows
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32")
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = wintypes.DWORD()
+        ok = k32.GetExitCodeProcess(h, ctypes.byref(code))
+        k32.CloseHandle(h)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    return True
+
+
+def claim(run_id: str, claims: Path) -> bool:
+    """Take a job for this sweep (queue mode); False if another sweep holds it. The claim file holds this pid."""
+    claims.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(claims / f"{run_id}.claim", os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    os.write(fd, str(os.getpid()).encode())
+    os.close(fd)
+    return True
+
+
+def clear_stale_claims(claims: Path):
+    """A claim left by a sweep that is no longer running frees its job (a stopped or failed run is retried)."""
+    for p in claims.glob("*.claim"):
+        try:
+            if not pid_alive(int(p.read_text())):
+                p.unlink()
+        except (OSError, ValueError):  # ValueError: another sweep is writing its claim right now
+            pass
+
+
 def flags(d: dict) -> list[str]:
     out: list[str] = []
     for k, v in d.items():
@@ -43,7 +91,8 @@ def flags(d: dict) -> list[str]:
 
 
 def main(cfg_path: str, dry_run: bool = False, shard: str = "0/1"):
-    me, n_shards = (int(x) for x in shard.split("/"))
+    queue = shard == "queue"  # shared queue: every sweep walks the same list and claims jobs, so a faster GPU takes more
+    me, n_shards = (0, 1) if queue else (int(x) for x in shard.split("/"))
     cfg = json.load(open(cfg_path, encoding="utf-8"))
     ledger = cfg.get("ledger", "runs/ledger.jsonl")
     common = cfg.get("common", {})
@@ -61,8 +110,14 @@ def main(cfg_path: str, dry_run: bool = False, shard: str = "0/1"):
     # shard the full grid, then skip finished runs: a job's shard never depends on when a shard was (re)launched,
     # so shards started at different times cannot run the same job (changed 2026-10-24; before, it sharded the remainder)
     jobs = [j for k, j in enumerate(jobs) if k % n_shards == me and j[0] not in done]
-    print(f"{len(jobs)} jobs to run on shard {me}/{n_shards}, {len(done)} already in {ledger}", flush=True)
+    claims = Path(ledger).parent / "claims"
+    if queue:
+        clear_stale_claims(claims)
+    print(f"{len(jobs)} jobs to run {'from the shared queue' if queue else f'on shard {me}/{n_shards}'}, "
+          f"{len(done)} already in {ledger}", flush=True)
     for k, (run_id, model, dataset, B, lr, seed, extra) in enumerate(jobs, 1):
+        if queue and not dry_run and (run_id in done_ids(ledger) or not claim(run_id, claims)):
+            continue
         cmd = [sys.executable, str(Path(__file__).resolve().parent / "train.py"),
                "--model", model, "--dataset", dataset, "--tokens_per_step", str(B), "--lr", str(lr),
                "--seed", str(seed), "--ledger", ledger, "--run_id", run_id] + flags(extra)

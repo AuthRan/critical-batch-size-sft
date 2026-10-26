@@ -64,6 +64,16 @@ python src/sweep.py configs/pilot.json configs/pilot_lowlr.json   # resumable; r
 python src/analyze.py runs/ledger.jsonl --out runs/analysis
 ```
 
+## Main grids (8 settings, from the scout columns)
+
+When `configs/scout.json` has finished, pull the ledger, then on the laptop:
+
+```
+python src/grid_configs.py runs/ledger_remote_snapshot.jsonl
+```
+
+That writes, per setting, `configs/grid_<model>_<dataset>.json` (7 B x 7 lrs centred on lr*(4096) x (B / 4096)^0.5, seed 1) and `configs/noise_<model>_<dataset>.json` (B = 4,096 at lr*(4096)), or `configs/scout_ext_<model>_<dataset>.json` if the scout minimum sits at the edge of its column. Push, then launch both GPUs on the same config list with `-Shard queue`: each sweep takes the next job that no other sweep has claimed (claim files in `runs\claims`), so the faster GPU does more and neither idles at a config boundary. A claim left by a stopped sweep is cleared when the next sweep starts, so relaunching retries that job. When a setting's grid is complete, `python src/grid_configs.py runs/ledger_remote_snapshot.jsonl --seeds` writes seeds 2 and 3 at the three lrs nearest each column's minimum, plus a `_ext` config for any column whose minimum is at its edge.
+
 ## One run by hand
 
 ```
@@ -83,8 +93,9 @@ That writes `configs/branch_<model>_<dataset>_base.json`, four checkpoint config
 - `src/data.py` — corpora, tokenisation, exact token-count step planning (no packing)
 - `src/noise_scale.py` — gradient noise scale estimator (McCandlish App. A, least-squares form)
 - `src/train.py` — one run; writes one JSON line to `runs/ledger.jsonl`
-- `src/sweep.py` — resumable grid runner
+- `src/sweep.py` — resumable grid runner (`--shard i/n`, or `--shard queue` for a shared queue)
 - `src/analyze.py` — lr*(B) fits, exponent, fixed-data CBS, branched CBS, plot
 - `src/branch_configs.py` — writes the base and branch configs for one setting
+- `src/grid_configs.py` — writes the main-grid, noise and seed-repeat configs from the scout columns
 - `tests/` — CPU tests with a tiny random model
 - `notes/` — reading notes, one file per paper

@@ -17,6 +17,8 @@ import train as train_mod  # noqa: E402
 from data import encode_pairs, plan_steps, split_holdout  # noqa: E402
 from noise_scale import collect_rows, fit_rows  # noqa: E402
 from analyze import branch_table, cell_fit, group_fit, noise_table, read_ledger  # noqa: E402
+import grid_configs  # noqa: E402
+import sweep  # noqa: E402
 
 
 class ByteTok:
@@ -283,3 +285,56 @@ def test_fixed_steps_control_truncates(tmp_path):
     ])
     rec = train_mod.run(args, model=tiny_model(), tok=ByteTok(), pairs=synthetic_pairs(200))
     assert rec["n_steps"] == 7 and "steps7" in rec["run_id"]
+
+
+def test_grid_configs_centre_each_column_on_the_sqrt_rule(tmp_path):
+    scout = {"models": ["x/M"], "datasets": ["d", "e"], "lr": [grid_configs.point(i) for i in range(-15, -8)],
+             "seeds": [1], "common": {"clip": 0}}
+    (tmp_path / "scout.json").write_text(json.dumps(scout))
+    rows = []
+
+    def add(dataset, B, lr, lr_star, seed=1):
+        rid = train_mod.make_run_id("x/M", dataset, B, lr, seed, {"clip": 0})
+        rows.append({"run_id": rid, "holdout_loss": 1.9 + (math.log10(lr / lr_star)) ** 2,
+                     "args": {"model": "x/M", "dataset": dataset, "tokens_per_step": B, "lr": lr, "seed": seed}})
+
+    for lr in scout["lr"]:
+        add("d", 4096, lr, 5e-5)
+        add("e", 4096, lr, 3e-6)  # minimum below the scout column: extension only
+    rows.append({**rows[0], "run_id": rows[0]["run_id"] + "__b2ref4096", "holdout_loss": 0.0})  # a control never counts
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    grid_configs.write(str(ledger), str(tmp_path / "scout.json"), str(tmp_path))
+
+    g = json.loads((tmp_path / "grid_M_d.json").read_text())
+    assert abs(g["lr_star_4096"] - 5e-5) < 1e-9
+    assert g["lr_by_B"]["4096"] == [4.6e-6, 1e-5, 2.2e-5, 4.6e-5, 1e-4, 2.2e-4, 4.6e-4]
+    assert g["lr_by_B"]["512"][3] == 2.2e-5  # 5e-5 / sqrt(8) = 1.8e-5, nearest point 2.2e-5
+    assert g["lr_by_B"]["32768"][3] == 1e-4  # 5e-5 * sqrt(8) = 1.4e-4, nearest point 1e-4
+    assert json.loads((tmp_path / "noise_M_d.json").read_text())["lr"] == [5e-5]
+    assert json.loads((tmp_path / "scout_ext_M_e.json").read_text())["lr"] == [4.6e-6, 2.2e-6]
+    assert not (tmp_path / "grid_M_e.json").exists()
+
+    for B, lrs in g["lr_by_B"].items():
+        for lr in lrs:
+            add("d", int(B), lr, 1e-6 if B == "512" else 5e-5 * (int(B) / 4096) ** 0.5)
+    ledger.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    grid_configs.write(str(ledger), str(tmp_path / "scout.json"), str(tmp_path), seeds_pass=True)
+    s = json.loads((tmp_path / "grid_M_d_seeds.json").read_text())
+    assert s["seeds"] == [2, 3] and "512" not in s["lr_by_B"]
+    assert s["lr_by_B"]["32768"] == [4.6e-5, 1e-4, 2.2e-4]
+    ext = json.loads((tmp_path / "grid_M_d_ext.json").read_text())
+    assert ext["lr_by_B"] == {"512": [1e-6, 4.6e-7]}  # minimum at the bottom of the B = 512 column
+
+
+def test_queue_claims_are_exclusive_and_freed_when_their_sweep_stops(tmp_path):
+    import os
+    import subprocess
+    assert sweep.claim("r1", tmp_path) and not sweep.claim("r1", tmp_path)
+    stopped = subprocess.Popen([sys.executable, "-c", "pass"])
+    stopped.wait()
+    (tmp_path / "r2.claim").write_text(str(stopped.pid))
+    assert sweep.pid_alive(os.getpid()) and not sweep.pid_alive(stopped.pid)
+    sweep.clear_stale_claims(tmp_path)
+    assert (tmp_path / "r1.claim").exists() and not (tmp_path / "r2.claim").exists()
+    assert sweep.claim("r2", tmp_path)
