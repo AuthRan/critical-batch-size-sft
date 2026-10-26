@@ -3,6 +3,7 @@
 # A log tail can be hours old: a queue is alive only if its venv python is listed and its log was written minutes ago.
 Set-Location $PSScriptRoot
 "now: " + (Get-Date).ToString("MM-dd HH:mm")
+(cmd /c "net statistics workstation") -match "since" | ForEach-Object { "machine up: $_" }
 Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*paper2_sft_cbs*" } |
   ForEach-Object { "venv python pid $($_.Id), started $($_.StartTime.ToString('MM-dd HH:mm'))" }
 foreach ($f in Get-ChildItem runs\*.jsonl) {
@@ -14,6 +15,7 @@ foreach ($f in Get-ChildItem runs\*_gpu*.log | Sort-Object LastWriteTime -Descen
   Select-String -Path $f.FullName -Pattern '^\[\d+/\d+\]|jobs to run|FAILED' | Select-Object -Last 3 | ForEach-Object { "   " + $_.Line }
   "   " + (Get-Content $f.FullName -Tail 1)
 }
-"FAILED lines in all logs: " + @(Select-String -Path runs\*_gpu*.log -Pattern 'FAILED').Count
-"free on C: " + [math]::Round((Get-PSDrive C).Free / 1GB, 1) + " GB"
+Select-String -Path runs\*_gpu*.log -Pattern 'FAILED' | Group-Object Filename | ForEach-Object { "FAILED x$($_.Count) in $($_.Name)" }
+# Get-PSDrive reports 0 free for this account on the GPU machine; dir does not
+if ((cmd /c dir /-c runs) -join " " -match "(\d+) bytes free") { "free on C: " + [math]::Round([double]$Matches[1] / 1GB, 1) + " GB" }
 nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv,noheader
