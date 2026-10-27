@@ -27,6 +27,8 @@ powershell -Command "Get-Content runs\pilot_gpu0.log -Tail 20 -Wait"
 
 Check on both queues with `powershell -ExecutionPolicy Bypass -File status.ps1`. A log tail can be hours old, so a queue is alive only if its venv python is listed and its log was written minutes ago (on 2026-10-25 both queues had died at 00:40 while their tails still looked like runs in progress).
 
+Launches go through `src/detach.py`: Windows OpenSSH ends every process a session started when the session closes, and before 2026-10-27 that ended the sweeps whenever the SSH window that started them disconnected. If another lab user's job is holding a GPU, `launch_when_free.ps1` (same arguments as `launch.ps1`) waits until that GPU's memory use stays under 1.5 GB, then launches.
+
 Configs separated by commas run back to back (here the pilot, then its low-lr extension). If a check-in finds the GPUs idle with the logs stale, the processes were ended from the console: re-run the same two launch lines, the sweep skips every run already in the ledger.
 
 To stop both GPUs (for instance to re-queue them): stop any `launch_after` waiters by the pid it printed (`Stop-Process -Id <pid>`), then every python process started from this folder's venv, which also ends the interpreters it started: `powershell -Command "Get-Process python | Where-Object { $_.Path -like '*paper2_sft_cbs*' } | Stop-Process -Force"`. Run that twice, a few seconds apart: a sweep whose run is stopped before the sweep itself can start its next run in between (seen 2026-10-24). A stopped run writes no ledger row, so the next launch re-runs it from the start.
