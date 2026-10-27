@@ -3,7 +3,8 @@
 # A log tail can be hours old: a queue is alive only if its venv python is listed and its log was written minutes ago.
 Set-Location $PSScriptRoot
 "now: " + (Get-Date).ToString("MM-dd HH:mm")
-(cmd /c "net statistics workstation") -match "since" | ForEach-Object { "machine up: $_" }
+# event logs and net statistics are denied to this account; query user shows who is at the console, and since when
+query user 2>$null | ForEach-Object { "session: $_" }
 Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*paper2_sft_cbs*" } |
   ForEach-Object { "venv python pid $($_.Id), started $($_.StartTime.ToString('MM-dd HH:mm'))" }
 foreach ($f in Get-ChildItem runs\*.jsonl) {
