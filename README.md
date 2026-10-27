@@ -4,16 +4,16 @@ See `PLAN.md` for the question, the pre-registered hypotheses, the design and th
 
 ## Setup on the GPU machine (Windows, 2x RTX 2080 Ti, over SSH)
 
-From the laptop, copy the project (type the account password when asked):
+The project lives in `G:\paper2_sft_cbs` and the Hugging Face cache in `G:\hf_cache` (`HF_HOME`), both moved off C: on 2026-10-27. The laptop logs in with the key `~/.ssh/id_ed25519_<gpu-host>` (a `Host <gpu-host>` entry in `~/.ssh/config`), so `ssh` and `scp` ask no password. From the laptop, copy the project:
 
 ```
-scp -r "D:\Research paper\Paper 2" <user>@<gpu-host>:<home>/paper2_sft_cbs
+scp -r "D:\Research paper\Paper 2" <user>@<gpu-host>:G:/paper2_sft_cbs
 ```
 
 Then on the GPU machine (`ssh <user>@<gpu-host>`):
 
 ```
-cd <home>\paper2_sft_cbs
+cd /d G:\paper2_sft_cbs
 setup_remote.cmd
 ```
 
@@ -36,8 +36,8 @@ To stop both GPUs (for instance to re-queue them): stop any `launch_after` waite
 Copy results back to the laptop with:
 
 ```
-scp <user>@<gpu-host>:<home>/paper2_sft_cbs/runs/ledger.jsonl "D:\Research paper\Paper 2\runs\ledger_remote_snapshot.jsonl"
-scp <user>@<gpu-host>:<home>/paper2_sft_cbs/runs/noise2_ledger.jsonl "D:\Research paper\Paper 2\runs\noise2_ledger_remote_snapshot.jsonl"
+scp <user>@<gpu-host>:G:/paper2_sft_cbs/runs/ledger.jsonl "D:\Research paper\Paper 2\runs\ledger_remote_snapshot.jsonl"
+scp <user>@<gpu-host>:G:/paper2_sft_cbs/runs/noise2_ledger.jsonl "D:\Research paper\Paper 2\runs\noise2_ledger_remote_snapshot.jsonl"
 ```
 
 `noise_ledger.jsonl` holds the v1 noise-scale estimator's runs, which are not used (PLAN.md section 10, deviation 2); `noise2_ledger.jsonl` holds the corrected estimator's. Analyse with `python src/analyze.py runs/ledger_remote_snapshot.jsonl --noise_ledger runs/noise2_ledger_remote_snapshot.jsonl`.

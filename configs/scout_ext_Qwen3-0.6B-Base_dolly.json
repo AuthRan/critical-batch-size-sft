@@ -1,0 +1,27 @@
+{
+  "ledger": "runs/ledger.jsonl",
+  "models": [
+    "Qwen/Qwen3-0.6B-Base"
+  ],
+  "datasets": [
+    "dolly"
+  ],
+  "tokens_per_step": [
+    4096
+  ],
+  "lr": [
+    4.6e-06,
+    2.2e-06
+  ],
+  "seeds": [
+    1
+  ],
+  "common": {
+    "epochs": 1.0,
+    "clip": 0,
+    "cross_eval": "dolly,oasst1,gsm8k",
+    "micro_token_budget": 512,
+    "optim": "adamw8bit",
+    "grad_checkpoint": true
+  }
+}

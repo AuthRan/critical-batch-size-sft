@@ -6,5 +6,5 @@
 Set-Location $PSScriptRoot
 Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
 Get-ChildItem -Recurse -Directory -Filter .pytest_cache | Remove-Item -Recurse -Force
-scp -r configs src tests launch.ps1 launch_after.ps1 status.ps1 setup_remote.cmd PLAN.md README.md requirements.txt <user>@<gpu-host>:<home>/paper2_sft_cbs/
-if ($LASTEXITCODE -eq 0) { "pushed to <user>@<gpu-host>:<home>/paper2_sft_cbs/" } else { "push failed (exit $LASTEXITCODE)" }
+scp -r configs src tests launch.ps1 launch_after.ps1 status.ps1 setup_remote.cmd PLAN.md README.md requirements.txt <user>@<gpu-host>:G:/paper2_sft_cbs/
+if ($LASTEXITCODE -eq 0) { "pushed to <user>@<gpu-host>:G:/paper2_sft_cbs/" } else { "push failed (exit $LASTEXITCODE)" }

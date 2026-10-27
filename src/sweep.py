@@ -111,22 +111,33 @@ def main(cfg_path: str, dry_run: bool = False, shard: str = "0/1"):
     # so shards started at different times cannot run the same job (changed 2026-10-24; before, it sharded the remainder)
     jobs = [j for k, j in enumerate(jobs) if k % n_shards == me and j[0] not in done]
     claims = Path(ledger).parent / "claims"
-    if queue:
-        clear_stale_claims(claims)
     print(f"{len(jobs)} jobs to run {'from the shared queue' if queue else f'on shard {me}/{n_shards}'}, "
           f"{len(done)} already in {ledger}", flush=True)
-    for k, (run_id, model, dataset, B, lr, seed, extra) in enumerate(jobs, 1):
-        if queue and not dry_run and (run_id in done_ids(ledger) or not claim(run_id, claims)):
-            continue
+    tried: set[str] = set()
+    while True:
+        if queue and not dry_run:
+            # every pick re-reads the ledger and frees the claims of stopped sweeps, so another sweep's finished,
+            # failed or abandoned jobs are seen; a job that failed here is left to another sweep, not retried by this one
+            clear_stale_claims(claims)
+            done = done_ids(ledger)
+            job = next((j for j in jobs if j[0] not in done and j[0] not in tried and claim(j[0], claims)), None)
+        else:
+            job = next((j for j in jobs if j[0] not in tried), None)
+        if job is None:
+            break
+        run_id, model, dataset, B, lr, seed, extra = job
+        tried.add(run_id)
         cmd = [sys.executable, str(Path(__file__).resolve().parent / "train.py"),
                "--model", model, "--dataset", dataset, "--tokens_per_step", str(B), "--lr", str(lr),
                "--seed", str(seed), "--ledger", ledger, "--run_id", run_id] + flags(extra)
-        print(f"[{k}/{len(jobs)}] {run_id}", flush=True)
+        print(f"[{jobs.index(job) + 1}/{len(jobs)}] {run_id}", flush=True)
         if dry_run:
             continue
         r = subprocess.run(cmd)
         if r.returncode != 0:
             print(f"  FAILED (exit {r.returncode}); continuing", flush=True)
+            if queue:  # e.g. this GPU is out of memory because someone else is using it: another GPU may run it
+                (claims / f"{run_id}.claim").unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

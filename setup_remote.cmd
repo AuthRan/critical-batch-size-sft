@@ -1,6 +1,6 @@
 @echo off
 REM One-time setup on the GPU machine (Windows). Run from inside the project folder:
-REM   cd <home>\paper2_sft_cbs && setup_remote.cmd
+REM   cd /d G:\paper2_sft_cbs && setup_remote.cmd
 REM Uses the system torch (already CUDA-enabled) via --system-site-packages; installs the rest into a venv.
 python -m venv --system-site-packages .venv || exit /b 1
 call .venv\Scripts\activate.bat
