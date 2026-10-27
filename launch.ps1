@@ -1,4 +1,4 @@
-# Launch a sweep shard as a detached process that survives the SSH session ending.
+# Launch a sweep shard as a detached process (src/detach.py) that survives the SSH session ending.
 #   powershell -ExecutionPolicy Bypass -File launch.ps1 -Config "configs/pilot.json,configs/pilot_lowlr.json" -Gpu 0 -Shard 0/2
 #   powershell -ExecutionPolicy Bypass -File launch.ps1 -Config "configs/pilot.json,configs/pilot_lowlr.json" -Gpu 1 -Shard 1/2
 # Several configs separated by commas run back to back. The log is named after the first one.
@@ -22,8 +22,7 @@ $env:PYTHONUNBUFFERED = "1"
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
 $env:HF_HUB_DISABLE_PROGRESS_BARS = "1"
 if (-not $Online) { $env:HF_HUB_OFFLINE = "1"; $env:HF_DATASETS_OFFLINE = "1" }
+# detach.py, not Start-Process: OpenSSH ends every process a session started when it closes, unless it breaks away
 $argList = @("src/sweep.py") + $cfgs + @("--shard", $Shard)
-$p = Start-Process -FilePath $python -ArgumentList $argList `
-      -WindowStyle Hidden -PassThru `
-      -RedirectStandardOutput "runs\$name.log" -RedirectStandardError "runs\$name.err"
-"started pid $($p.Id): $($cfgs -join ' + ') shard $Shard on GPU $Gpu -> runs\$name.log"
+$newPid = & $python "src/detach.py" "runs\$name.log" "runs\$name.err" -- $python @argList
+"started pid ${newPid}: $($cfgs -join ' + ') shard $Shard on GPU $Gpu -> runs\$name.log"
