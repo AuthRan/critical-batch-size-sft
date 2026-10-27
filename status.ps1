@@ -6,7 +6,7 @@ Set-Location $PSScriptRoot
 # event logs and net statistics are denied to this account; query user shows who is at the console, and since when
 query user 2>$null | ForEach-Object { "session: $_" }
 Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$PSScriptRoot*" } |
-  ForEach-Object { "venv python pid $($_.Id), started $($_.StartTime.ToString('MM-dd HH:mm'))" }
+  ForEach-Object { "venv python pid $($_.Id), started $(if ($_.StartTime) { $_.StartTime.ToString('MM-dd HH:mm') } else { 'just now' })" }
 foreach ($f in Get-ChildItem runs\*.jsonl) {
   "$($f.Name): $((Get-Content $f.FullName | Measure-Object -Line).Lines) rows, last write $($f.LastWriteTime.ToString('MM-dd HH:mm'))"
 }

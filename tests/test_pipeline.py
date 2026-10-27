@@ -338,3 +338,9 @@ def test_queue_claims_are_exclusive_and_freed_when_their_sweep_stops(tmp_path):
     sweep.clear_stale_claims(tmp_path)
     assert (tmp_path / "r1.claim").exists() and not (tmp_path / "r2.claim").exists()
     assert sweep.claim("r2", tmp_path)
+
+
+def test_sweep_list_file_skips_blanks_and_comments(tmp_path):
+    q = tmp_path / "queue.txt"
+    q.write_text("configs/a.json\n\n# not yet: configs/b.json\nconfigs/c.json  # extension\n", encoding="utf-8")
+    assert sweep.expand(["configs/x.json", str(q)]) == ["configs/x.json", "configs/a.json", "configs/c.json"]

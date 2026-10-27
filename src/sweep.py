@@ -4,6 +4,7 @@
   python src/sweep.py configs/pilot.json --shard 0/2     # on GPU 0, with --shard 1/2 on GPU 1
   python src/sweep.py configs/pilot.json configs/pilot_lowlr.json --shard 0/2   # configs run back to back
   python src/sweep.py configs/grid_a.json --shard queue     # on both GPUs: each takes the next unclaimed job
+  python src/sweep.py configs/queue.txt --shard queue       # configs listed in a file that can grow while it runs
 
 Each job is a subprocess so that one crash (e.g. OOM) does not take the sweep down.
 Re-running the same command resumes where it left off.
@@ -140,6 +141,17 @@ def main(cfg_path: str, dry_run: bool = False, shard: str = "0/1"):
                 (claims / f"{run_id}.claim").unlink(missing_ok=True)
 
 
+def expand(args: list[str]) -> list[str]:
+    """Config paths; a .txt argument lists configs, one per line (# for comments)."""
+    out: list[str] = []
+    for a in args:
+        if a.endswith(".txt"):
+            out += [s for s in (line.split("#")[0].strip() for line in open(a, encoding="utf-8")) if s]
+        else:
+            out.append(a)
+    return out
+
+
 if __name__ == "__main__":
     argv = sys.argv[1:]
     shard = "0/1"
@@ -151,5 +163,12 @@ if __name__ == "__main__":
     cfgs = [a for a in argv if not a.startswith("--")]
     if not cfgs:
         sys.exit("usage: sweep.py CONFIG [CONFIG ...] [--shard i/n] [--dry-run]")
-    for cfg in cfgs:  # several configs run back to back against their own ledgers
-        main(cfg, dry_run=dry, shard=shard)
+    # several configs run back to back against their own ledgers; a .txt list is re-read each time a config finishes,
+    # so configs can be added to it (or reordered) while the sweep runs
+    finished: set[str] = set()
+    while (cfg := next((c for c in expand(cfgs) if c not in finished), None)) is not None:
+        finished.add(cfg)
+        try:
+            main(cfg, dry_run=dry, shard=shard)
+        except (OSError, json.JSONDecodeError) as e:  # a config not pushed yet, or caught mid-copy: skip, keep going
+            print(f"{cfg}: skipped ({e})", flush=True)

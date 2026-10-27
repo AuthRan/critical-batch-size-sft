@@ -1,0 +1,24 @@
+# The shared queue both GPUs run (sweep.py --shard queue). Re-read whenever a config finishes, so new lines are
+# picked up without a restart; a sweep takes the first line it has not run yet. Push with push.ps1.
+configs/scout.json
+configs/scout_ext_Qwen3-0.6B-Base_dolly.json
+# written before the oasst1 column finished: its 3 lowest lrs rise monotonically from the bottom edge (2026-10-28)
+configs/scout_ext_Qwen3-0.6B-Base_oasst1.json
+configs/noise_SmolLM2-135M_dolly.json
+configs/noise_SmolLM2-135M_oasst1.json
+configs/noise_SmolLM2-135M_gsm8k.json
+configs/noise_SmolLM2-360M_oasst1.json
+configs/noise_SmolLM2-360M_gsm8k.json
+configs/noise_Qwen3-0.6B-Base_gsm8k.json
+configs/branch_SmolLM2-360M_dolly_f0.00_d0.25.json
+configs/branch_SmolLM2-360M_dolly_f0.25_d0.25.json
+configs/branch_SmolLM2-360M_dolly_f0.50_d0.25.json
+configs/branch_SmolLM2-360M_dolly_f0.75_d0.25.json
+configs/branch_SmolLM2-360M_dolly_f0.50_d0.125.json
+configs/control_clip.json
+configs/grid_SmolLM2-135M_dolly.json
+configs/grid_SmolLM2-135M_oasst1.json
+configs/grid_SmolLM2-135M_gsm8k.json
+configs/grid_SmolLM2-360M_oasst1.json
+configs/grid_SmolLM2-360M_gsm8k.json
+configs/grid_Qwen3-0.6B-Base_gsm8k.json
