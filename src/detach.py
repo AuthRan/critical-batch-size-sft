@@ -2,8 +2,8 @@
 
   python src/detach.py runs/x.log runs/x.err -- python src/sweep.py configs/a.json --shard queue
 
-Windows OpenSSH puts a session's processes in a job object and ends them all when the session closes, which is
-what ended the sweeps on 2026-10-20, 10-25 and 10-27 (PLAN.md section 10). Start-Process cannot leave that job;
+Windows OpenSSH puts a session's processes in a job object and ends them all when the session closes, which most
+likely ended the sweeps on 2026-10-20, 10-25 and 10-27. Start-Process cannot leave that job;
 CREATE_BREAKAWAY_FROM_JOB can, and the job on the GPU machine allows it (tested 2026-10-27).
 """
 from __future__ import annotations
