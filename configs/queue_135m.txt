@@ -1,0 +1,6 @@
+# GPU 0's list while something outside this project holds ~2.2 GB on it (2026-10-28): only SmolLM2-135M work, which
+# peaks at 3.9 GB. 360M (8.5 GB) and Qwen (8.3 GB) would push it into the >10.6 GB range where GPU 1 paged and failed
+# on 2026-10-20. Same claims as configs/queue.txt, so both GPUs share these grids.
+configs/grid_SmolLM2-135M_dolly.json
+configs/grid_SmolLM2-135M_oasst1.json
+configs/grid_SmolLM2-135M_gsm8k.json

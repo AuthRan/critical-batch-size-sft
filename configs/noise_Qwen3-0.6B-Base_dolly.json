@@ -1,0 +1,29 @@
+{
+  "ledger": "runs/noise2_ledger.jsonl",
+  "models": [
+    "Qwen/Qwen3-0.6B-Base"
+  ],
+  "datasets": [
+    "dolly"
+  ],
+  "tokens_per_step": [
+    4096
+  ],
+  "lr": [
+    6.191e-06
+  ],
+  "seeds": [
+    1
+  ],
+  "common": {
+    "epochs": 1.0,
+    "clip": 0,
+    "micro_token_budget": 512,
+    "optim": "adamw8bit",
+    "grad_checkpoint": true,
+    "noise_scale_at": "0,0.25,0.5,0.75,1",
+    "noise_scale_tokens": 65536,
+    "noise_scale_big_batches": 4,
+    "noise_scale_micro_per_big": 8
+  }
+}

@@ -16,9 +16,13 @@ configs/branch_SmolLM2-360M_dolly_f0.50_d0.25.json
 configs/branch_SmolLM2-360M_dolly_f0.75_d0.25.json
 configs/branch_SmolLM2-360M_dolly_f0.50_d0.125.json
 configs/control_clip.json
+configs/noise_Qwen3-0.6B-Base_dolly.json
+configs/noise_Qwen3-0.6B-Base_oasst1.json
 configs/grid_SmolLM2-135M_dolly.json
 configs/grid_SmolLM2-135M_oasst1.json
 configs/grid_SmolLM2-135M_gsm8k.json
 configs/grid_SmolLM2-360M_oasst1.json
 configs/grid_SmolLM2-360M_gsm8k.json
 configs/grid_Qwen3-0.6B-Base_gsm8k.json
+configs/grid_Qwen3-0.6B-Base_dolly.json
+configs/grid_Qwen3-0.6B-Base_oasst1.json
