@@ -23,6 +23,7 @@ configs/grid_SmolLM2-135M_oasst1.json
 configs/grid_SmolLM2-135M_gsm8k.json
 configs/grid_SmolLM2-360M_oasst1.json
 configs/grid_SmolLM2-360M_gsm8k.json
+# auto: new configs go above this line
 configs/grid_Qwen3-0.6B-Base_gsm8k.json
 configs/grid_Qwen3-0.6B-Base_dolly.json
 configs/grid_Qwen3-0.6B-Base_oasst1.json

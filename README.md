@@ -76,6 +76,18 @@ python src/grid_configs.py runs/ledger_remote_snapshot.jsonl
 
 That writes, per setting, `configs/grid_<model>_<dataset>.json` (7 B x 7 lrs centred on lr*(4096) x (B / 4096)^0.5, seed 1) and `configs/noise_<model>_<dataset>.json` (B = 4,096 at lr*(4096)), or `configs/scout_ext_<model>_<dataset>.json` if the scout minimum sits at the edge of its column. Push, then launch both GPUs on `configs/queue.txt` with `-Shard queue` (`-Config configs/queue.txt`). The sweep re-reads that list each time it finishes a config and takes the first line it has not run, so a new config is queued by adding a line and pushing, with no restart. A change to `sweep.py` itself needs one: `relaunch_at_boundary.ps1 -Log <a sweep log> -Config configs/queue.txt -Gpu <n>` restarts at the next job start, losing only that job's loading (it stops every sweep from this folder, so start a GPU's `launch_when_free.ps1` with `-After <relauncher pid>`). In queue mode each sweep takes the next job that no other sweep has claimed (claim files in `runs\claims`), so the faster GPU does more and neither idles at a config boundary. A claim left by a stopped sweep is cleared when the next sweep starts, so relaunching retries that job. When a setting's grid is complete, `python src/grid_configs.py runs/ledger_remote_snapshot.jsonl --seeds` writes seeds 2 and 3 at the three lrs nearest each column's minimum, plus a `_ext` config for any column whose minimum is at its edge.
 
+## Unattended for days
+
+Three detached loops keep the machine busy with nobody logged in (set up 2026-10-28):
+
+```
+powershell -ExecutionPolicy Bypass -File keepalive.ps1 -Config configs/queue.txt -Gpu 1 -After <GPU 1 sweep pid>
+powershell -ExecutionPolicy Bypass -File keepalive.ps1 -Config configs/queue_135m.txt -FreeConfig "configs/queue_135m.txt,configs/queue.txt" -Gpu 0 -After <GPU 0 sweep pid>
+python src/detach.py runs/autoplan.log runs/autoplan.err -- .venv\Scripts\python src/autoplan.py --every 1200
+```
+
+`keepalive.ps1` relaunches a GPU's sweep 20 min after it exits, whether its lists ran out or it crashed. GPU 0 switches to the full queue whenever nobody else holds memory on it. `src/autoplan.py` runs `grid_configs.py` (pass 1 and the seeds pass) on the live ledger every 20 min. It queues each new config as a copy in `configs/auto/`, above the `# auto:` line of `configs/queue.txt`, and SmolLM2-135M ones in `configs/queue_135m.txt` too. It also writes and queues the SmolLM2-135M x dolly branched configs once that grid's B = 1,024 cell has 3 seeds (PLAN.md section 10, item 3). Pull `configs/auto/`, `configs/queue*.txt` and any new `configs/branch_SmolLM2-135M_dolly_*.json` back to the laptop afterwards, before the next `push.ps1` overwrites the lists. Stop the loops by their printed pids (they are powershell and python processes).
+
 ## One run by hand
 
 ```

@@ -340,6 +340,38 @@ def test_queue_claims_are_exclusive_and_freed_when_their_sweep_stops(tmp_path):
     assert sweep.claim("r2", tmp_path)
 
 
+def test_autoplan_queues_new_content_once_above_the_marker(tmp_path):
+    import autoplan
+    q = tmp_path / "queue.txt"
+    q.write_text(f"configs/a.json\n{autoplan.MARKER}\nconfigs/qwen.json\n", encoding="utf-8")
+    assert autoplan.enqueue(str(q), ["configs/b.json", "configs/a.json"]) == ["configs/b.json"]
+    assert autoplan.enqueue(str(q), ["configs/b.json"]) == []
+    assert q.read_text(encoding="utf-8").splitlines() == ["configs/a.json", "configs/b.json", autoplan.MARKER,
+                                                          "configs/qwen.json"]
+    cfg, auto = tmp_path / "grid_x_seeds.json", tmp_path / "auto"
+    cfg.write_text(json.dumps({"lr_by_B": {"512": [1e-5]}}), encoding="utf-8")
+    first = autoplan.snapshot(cfg, auto)
+    assert autoplan.snapshot(cfg, auto) == first and first.endswith("grid_x_seeds__1.json")
+    cfg.write_text(json.dumps({"lr_by_B": {"512": [1e-5], "1024": [2.2e-5]}}), encoding="utf-8")
+    assert autoplan.snapshot(cfg, auto).endswith("grid_x_seeds__2.json")
+
+
+def test_autoplan_branch_lr0_waits_for_three_seeds_around_the_minimum():
+    import autoplan
+    model, dataset, extra = "HuggingFaceTB/SmolLM2-135M", "dolly", {"clip": 0}
+    lrs = [grid_configs.point(i) for i in range(-15, -8)]  # 1e-5 .. 1e-3, minimum at 1e-4
+
+    def rec(lr, seed):
+        loss = 2.0 + (math.log10(lr) + 4.0) ** 2 + 0.001 * seed
+        return {"run_id": train_mod.make_run_id(model, dataset, 1024, lr, seed, extra), "holdout_loss": loss,
+                "args": {"model": model, "dataset": dataset, "tokens_per_step": 1024, "seed": seed, "lr": lr}}
+
+    recs = [rec(lr, 1) for lr in lrs]
+    assert autoplan.branch_lr0(recs, model, dataset, extra) is None
+    recs += [rec(lr, s) for lr in lrs[2:5] for s in (2, 3)]
+    assert abs(math.log10(autoplan.branch_lr0(recs, model, dataset, extra)) + 4.0) < 0.05
+
+
 def test_sweep_list_file_skips_blanks_and_comments(tmp_path):
     q = tmp_path / "queue.txt"
     q.write_text("configs/a.json\n\n# not yet: configs/b.json\nconfigs/c.json  # extension\n", encoding="utf-8")

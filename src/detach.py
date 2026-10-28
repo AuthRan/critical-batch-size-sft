@@ -20,7 +20,7 @@ def main(argv: list[str]) -> int:
     out, err, sep, *cmd = argv
     if sep != "--" or not cmd:
         sys.exit("usage: detach.py OUT ERR -- COMMAND [ARG ...]")
-    with open(out, "wb") as o, open(err, "wb") as e:
+    with open(out, "ab") as o, open(err, "ab") as e:  # append: keepalive.ps1 relaunches into the same log
         if sys.platform == "win32":
             p = subprocess.Popen(cmd, stdout=o, stderr=e, stdin=subprocess.DEVNULL, creationflags=FLAGS)
         else:
