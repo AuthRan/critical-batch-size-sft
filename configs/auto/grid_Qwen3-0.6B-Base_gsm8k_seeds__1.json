@@ -1,0 +1,67 @@
+{
+  "ledger": "runs/ledger.jsonl",
+  "models": [
+    "Qwen/Qwen3-0.6B-Base"
+  ],
+  "datasets": [
+    "gsm8k"
+  ],
+  "tokens_per_step": [
+    512,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384,
+    32768
+  ],
+  "lr_by_B": {
+    "512": [
+      2.2e-06,
+      4.6e-06,
+      1e-05
+    ],
+    "1024": [
+      4.6e-06,
+      1e-05,
+      2.2e-05
+    ],
+    "2048": [
+      4.6e-06,
+      1e-05,
+      2.2e-05
+    ],
+    "4096": [
+      1e-05,
+      2.2e-05,
+      4.6e-05
+    ],
+    "8192": [
+      1e-05,
+      2.2e-05,
+      4.6e-05
+    ],
+    "16384": [
+      1e-05,
+      2.2e-05,
+      4.6e-05
+    ],
+    "32768": [
+      1e-05,
+      2.2e-05,
+      4.6e-05
+    ]
+  },
+  "seeds": [
+    2,
+    3
+  ],
+  "common": {
+    "epochs": 1.0,
+    "clip": 0,
+    "cross_eval": "dolly,oasst1,gsm8k",
+    "micro_token_budget": 512,
+    "optim": "adamw8bit",
+    "grad_checkpoint": true
+  }
+}
