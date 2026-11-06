@@ -121,12 +121,15 @@ def group_fit(pts, rng) -> dict:
             "lr_star_by_B": {int(B): p["lr_star"] for B, p in pts}}
 
 
-def branch_table(recs: list[dict]) -> list[dict]:
+def branch_table(recs: list[dict], core_only: bool = False) -> list[dict]:
     """Branched CBS (PLAN.md section 4, Merrill et al. 2025): per (model, dataset, checkpoint, window), the best
-    held-out loss at each B over its lr mini-sweep, then the same CBS rule as the fixed-data grid."""
+    held-out loss at each B over its lr mini-sweep, then the same CBS rule as the fixed-data grid. core_only keeps the
+    pre-registered {1/2.15, 1, 2.15} sweep and leaves out the bracketing extensions (PLAN.md section 10, item 5)."""
     groups: dict[tuple, dict] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     for r in recs:
         a, b = r["args"], r["branch"]
+        if core_only and abs(np.log(a["lr"] / ((a["tokens_per_step"] / b["base_B"]) ** 0.5 * b["base_lr"]))) > 1.01 * np.log(2.15):
+            continue
         key = (a["model"].split("/")[-1], a["dataset"], round(b["base_frac"], 2), b["delta_frac"], b["base_B"], b["base_lr"])
         groups[key][int(a["tokens_per_step"])][float(a["lr"])].append(float(r["holdout_loss"]))
     rows = []
@@ -208,15 +211,19 @@ def main(ledger: str, out: str, branch_ledger: str = "", noise_ledger: str = "")
                      f"{s['cbs_fixed_data']} (next {s['cbs_upper'] or '-'}) | {s['cbs_fixed_data_eps01']} | {s['n_fit']} | {', '.join(map(str, s['excluded'])) or '-'} |")
 
     if branch_ledger and Path(branch_ledger).exists():
-        brs = branch_table([r for r in read_ledger(branch_ledger) if r.get("branch") and r.get("holdout_loss") is not None])
-        lines += ["", "| model | dataset | checkpoint | window | CBS_branched (tokens) | CBS at eps 0.01 | best loss by B | "
-                  "best lr / sqrt rule by B | lr at sweep edge |", "|---|---|---|---|---|---|---|---|---|"]
-        for r in brs:
-            lines.append(f"| {r['model']} | {r['dataset']} | {r['base_frac']:.2f} | {r['delta_frac']:g} | "
-                         f"{r['cbs']} (next {r['cbs_upper'] or '-'}) | {r['cbs_eps01']} | "
-                         f"{', '.join(f'{B}: {v:.4f}' for B, v in r['best_loss'].items())} | "
-                         f"{', '.join(f'{B}: {v:.2f}' for B, v in r['best_mult'].items())} | "
-                         f"{', '.join(map(str, r['edge'])) or '-'} |")
+        br_recs = [r for r in read_ledger(branch_ledger) if r.get("branch") and r.get("holdout_loss") is not None]
+        brs, core = branch_table(br_recs), branch_table(br_recs, core_only=True)
+        for title, table in [("", brs)] + ([("Pre-registered 3-lr sweep only:", core)] if core != brs else []):
+            lines += ["", title] if title else [""]
+            lines += ["| model | dataset | checkpoint | window | CBS_branched (tokens) | CBS at eps 0.01 | best loss by B | "
+                      "best lr / sqrt rule by B | lr at sweep edge |", "|---|---|---|---|---|---|---|---|---|"]
+            for r in table:
+                lines.append(f"| {r['model']} | {r['dataset']} | {r['base_frac']:.2f} | {r['delta_frac']:g} | "
+                             f"{r['cbs']} (next {r['cbs_upper'] or '-'}) | {r['cbs_eps01']} | "
+                             f"{', '.join(f'{B}: {v:.4f}' for B, v in r['best_loss'].items())} | "
+                             f"{', '.join(f'{B}: {v:.2f}' for B, v in r['best_mult'].items())} | "
+                             f"{', '.join(map(str, r['edge'])) or '-'} |")
+        summary["branches_core"] = core
         summary["branches"] = brs
 
     ns = noise_table(read_ledger(noise_ledger)) if noise_ledger and Path(noise_ledger).exists() else []

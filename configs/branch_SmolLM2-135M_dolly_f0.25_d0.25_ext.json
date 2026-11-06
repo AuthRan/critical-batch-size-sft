@@ -1,0 +1,29 @@
+{
+  "ledger": "runs/branch_ledger.jsonl",
+  "models": [
+    "HuggingFaceTB/SmolLM2-135M"
+  ],
+  "datasets": [
+    "dolly"
+  ],
+  "tokens_per_step": [
+    32768
+  ],
+  "lr_by_B": {
+    "32768": [
+      4.289e-05,
+      1.995e-05
+    ]
+  },
+  "seeds": [
+    1
+  ],
+  "common": {
+    "epochs": 1.0,
+    "clip": 0,
+    "micro_token_budget": 1024,
+    "init_from": "runs/ckpt/SmolLM2-135M_dolly/f0.25.pt",
+    "delta_frac": 0.25,
+    "wait_for_init_h": 1
+  }
+}

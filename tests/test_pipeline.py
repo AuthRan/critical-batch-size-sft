@@ -137,6 +137,32 @@ def test_branch_cbs_per_checkpoint():
     assert r["best_loss"][2048] == 1.908 and all(abs(v - 1.0) < 1e-9 for v in r["best_mult"].values()) and not r["edge"]
 
 
+def test_branch_ext_brackets_edge_cells_and_core_table_ignores_them(tmp_path):
+    import branch_configs
+    lr0 = 2e-5
+
+    def rec(B, power, loss):
+        return {"holdout_loss": loss, "args": {"model": "x/M", "dataset": "d", "tokens_per_step": B, "seed": 1,
+                                               "lr": float(f"{(B / 1024) ** 0.5 * lr0 * 2.15 ** power:.3e}")},
+                "branch": {"base_frac": 0.5, "delta_frac": 0.25, "base_B": 1024, "base_lr": lr0}}
+
+    # best lr: bottom of the sweep at 1024, middle at 2048, top at 4096
+    recs = [rec(B, k, l) for B, ls in {1024: (1.90, 1.91, 1.92), 2048: (1.91, 1.90, 1.92), 4096: (1.92, 1.91, 1.90)}.items()
+            for k, l in zip((-1, 0, 1), ls)]
+    [p] = branch_configs.write_ext("x/M", "d", lr0, branch_table(recs), out_dir=str(tmp_path))
+    cfg = json.loads(p.read_text(encoding="utf-8"))
+    assert p.name == "branch_M_d_f0.50_d0.25_ext.json" and cfg["tokens_per_step"] == [1024, 4096]
+    assert cfg["common"]["init_from"] == "runs/ckpt/M_d/f0.50.pt" and cfg["common"]["delta_frac"] == 0.25
+    assert np.allclose(cfg["lr_by_B"]["1024"], [lr0 * 2.15 ** -2, lr0 * 2.15 ** -3], rtol=1e-3)
+    assert np.allclose(cfg["lr_by_B"]["4096"], [2 * lr0 * 2.15 ** 2, 2 * lr0 * 2.15 ** 3], rtol=1e-3)
+
+    recs += [rec(1024, -2, 1.88), rec(1024, -3, 1.89)]  # the extension brackets a better lr at 1024
+    r = branch_table(recs)[0]
+    assert r["best_loss"][1024] == 1.88 and 1024 not in r["edge"] and abs(r["best_mult"][1024] * 2.15 ** 2 - 1) < 1e-2
+    core = branch_table(recs, core_only=True)[0]
+    assert core["best_loss"][1024] == 1.90 and 1024 in core["edge"]
+
+
 def test_ledger_keeps_first_row_per_run(tmp_path):
     # the pre-13:17 sweep could run a job on both GPUs; the second row must not count as an extra seed
     p = tmp_path / "l.jsonl"

@@ -19,3 +19,14 @@ configs/branch_SmolLM2-135M_gsm8k_f0.25_d0.25.json
 configs/branch_SmolLM2-135M_gsm8k_f0.50_d0.125.json
 configs/branch_SmolLM2-135M_gsm8k_f0.50_d0.25.json
 configs/branch_SmolLM2-135M_gsm8k_f0.75_d0.25.json
+configs/branch_SmolLM2-135M_gsm8k_f0.00_d0.25_ext.json
+configs/branch_SmolLM2-135M_gsm8k_f0.25_d0.25_ext.json
+configs/branch_SmolLM2-135M_gsm8k_f0.50_d0.125_ext.json
+configs/branch_SmolLM2-135M_gsm8k_f0.50_d0.25_ext.json
+configs/branch_SmolLM2-135M_gsm8k_f0.75_d0.25_ext.json
+configs/branch_SmolLM2-135M_dolly_f0.25_d0.25_ext.json
+configs/branch_SmolLM2-135M_dolly_f0.50_d0.125_ext.json
+configs/branch_SmolLM2-135M_dolly_f0.50_d0.25_ext.json
+configs/branch_SmolLM2-135M_dolly_f0.75_d0.25_ext.json
+configs/control_8bit_SmolLM2-135M_dolly.json
+configs/control_8bit_SmolLM2-135M_dolly_seeds.json
