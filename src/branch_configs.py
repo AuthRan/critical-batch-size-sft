@@ -11,7 +11,8 @@ Delta-sensitivity config (12.5% window at the 50% checkpoint). Queue the base co
   python src/branch_configs.py --model HuggingFaceTB/SmolLM2-360M --dataset dolly --lr0 2.34e-5 --ext_from runs/branch_ledger.jsonl
 
 Instead writes <window>_ext configs: the next 2 lrs past the sweep's edge, for each cell whose best lr is at that edge
-(PLAN.md section 10, item 5). Run it again on the new results for another round; it rewrites the same file names.
+(PLAN.md section 10, item 5). Run it again on the new results for another round. It rewrites the same file names, and a
+running sweep never re-runs a list entry it has finished, so queue a later round as configs/auto/<stem>__<n>.json.
 """
 from __future__ import annotations
 
