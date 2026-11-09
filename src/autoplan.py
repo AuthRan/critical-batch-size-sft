@@ -91,7 +91,11 @@ def branch_lr0(recs: list[dict], model: str, dataset: str, extra: dict) -> float
 
 def once(ledger: str, configs: str = "configs") -> list[str]:
     log, auto = [], Path(configs) / "auto"
-    written = grid_configs.write(ledger, out_dir=configs) + grid_configs.write(ledger, out_dir=configs, seeds_pass=True)
+    written = []
+    for sc in ("scout.json", "scout_confirm.json"):  # the main study, then the confirmatory settings of PLAN.md section 11
+        if (Path(configs) / sc).exists():
+            for seeds_pass in (False, True):
+                written += grid_configs.write(ledger, scout_cfg=str(Path(configs) / sc), out_dir=configs, seeds_pass=seeds_pass)
     # every pass re-offers every newest copy: enqueue skips what a list holds, and a pass that failed half-way is redone
     for line in written:
         if line.endswith(".json"):

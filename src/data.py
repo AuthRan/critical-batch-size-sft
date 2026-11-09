@@ -20,7 +20,12 @@ HF_SOURCES = {
     "alpaca": ("yahma/alpaca-cleaned", None, "train"),
     "gsm8k": ("openai/gsm8k", "main", "train"),
     "oasst1": ("OpenAssistant/oasst1", None, "train"),
+    # confirmatory study (PLAN.md section 11)
+    "alpaca8k": ("yahma/alpaca-cleaned", None, "train"),
+    "codealpaca": ("sahil2801/CodeAlpaca-20k", None, "train"),
+    "dialogsum": ("knkarthick/dialogsum", None, "train"),
 }
+SUBSAMPLE = {"alpaca8k": 8000}  # a fixed random subset (seed 0): about 1.1M supervised tokens, the size of dolly
 
 
 def load_pairs(name: str) -> list[dict]:
@@ -36,7 +41,7 @@ def load_pairs(name: str) -> list[dict]:
             if ex.get("context"):
                 instr += "\n\n" + ex["context"]
             pairs.append({"prompt": PROMPT.format(instruction=instr), "response": ex["response"]})
-    elif name == "alpaca":
+    elif name in ("alpaca", "alpaca8k", "codealpaca"):
         for ex in ds:
             instr = ex["instruction"]
             if ex.get("input"):
@@ -57,9 +62,17 @@ def load_pairs(name: str) -> list[dict]:
             if parent["lang"] != "en":
                 continue
             pairs.append({"prompt": PROMPT.format(instruction=parent["text"]), "response": ex["text"]})
+    elif name == "dialogsum":
+        for ex in ds:
+            instr = "Summarize the following dialogue.\n\n" + ex["dialogue"]
+            pairs.append({"prompt": PROMPT.format(instruction=instr), "response": ex["summary"]})
     else:
         raise ValueError(f"unknown corpus {name}")
-    return [p for p in pairs if p["prompt"].strip() and p["response"].strip()]
+    pairs = [p for p in pairs if p["prompt"].strip() and p["response"].strip()]
+    if name in SUBSAMPLE:
+        keep = sorted(random.Random(0).sample(range(len(pairs)), SUBSAMPLE[name]))
+        pairs = [pairs[i] for i in keep]
+    return pairs
 
 
 @dataclass
