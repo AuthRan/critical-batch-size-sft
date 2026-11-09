@@ -102,6 +102,14 @@ python src/branch_configs.py --model HuggingFaceTB/SmolLM2-360M --dataset dolly 
 
 That writes `configs/branch_<model>_<dataset>_base.json`, four checkpoint configs (`f0.00` to `f0.75`, 25% windows) and one Delta-sensitivity config (`f0.50_d0.125`). Queue the base config well ahead of the branch configs (base, then other work, then branches) on both GPUs. The base run saves its checkpoints to `runs/ckpt/<model>_<dataset>/`. A branch waits at most 1 h for a missing checkpoint and then fails, so a base run that could not save (full disk, crash) costs an hour, not a night. A checkpoint holds the weights plus AdamW state, about 4.3 GB at 360M. When `runs/branch_ledger.jsonl` has all 90 branch rows for a setting, delete its folder (`rmdir /s /q runs\ckpt\SmolLM2-360M_dolly`) before starting the next setting. `analyze.py` reads the branch ledger and adds the branched-CBS table. If a cell's best lr sits at the edge of its sweep, the same command with `--ext_from runs/branch_ledger.jsonl` writes `_ext` configs with the next 2 lrs past that edge (PLAN.md section 10, item 5), so keep the checkpoints until no cell is at an edge; `analyze.py` then prints the CBS with and without them.
 
+## Paper
+
+```
+python src/paper.py
+```
+
+Reads the ledgers in `data/` (copies taken after the last run, see `data/README.md`) and writes `paper/numbers.md` and `paper/numbers.json` (every number quoted in the text), `paper/tables/*.tex` and `paper/figures/*.pdf`. `paper/main.tex` inputs the tables and figures, so after a rerun only the numbers in the prose need checking against `paper/numbers.md`. Set `PAPER_PREVIEW=<folder>` to also write PNG copies of the figures. `src/h6_transfer.py` prints the H6 table on its own.
+
 ## Layout
 
 - `src/data.py` — corpora, tokenisation, exact token-count step planning (no packing)
