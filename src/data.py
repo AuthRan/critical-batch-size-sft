@@ -8,8 +8,11 @@ The loss of a step is the token-mean over the whole step.
 """
 from __future__ import annotations
 
+import json
 import random
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import torch
 
@@ -26,10 +29,16 @@ HF_SOURCES = {
     "dialogsum": ("knkarthick/dialogsum", None, "train"),
 }
 SUBSAMPLE = {"alpaca8k": 8000}  # a fixed random subset (seed 0): about 1.1M supervised tokens, the size of dolly
+# Exported pairs (python src/data.py --export NAME ...), read instead of the Hugging Face hub when present. Since
+# 2026-11-09 the GPU machine refuses to load a pyarrow DLL that the datasets library imports, so it reads these.
+LOCAL = Path(__file__).resolve().parent.parent / "corpora"
 
 
 def load_pairs(name: str) -> list[dict]:
     """Return a list of {"prompt": str, "response": str} for a named corpus."""
+    local = LOCAL / f"{name}.jsonl"
+    if local.exists():
+        return [json.loads(l) for l in open(local, encoding="utf-8")]
     from datasets import load_dataset
 
     repo, config, split = HF_SOURCES[name]
@@ -196,3 +205,13 @@ def collate(enc: list[Encoded], idxs: list[int], pad_id: int, device) -> dict:
         labels[r, : e.length] = torch.tensor(e.labels)
         attn[r, : e.length] = 1
     return {"input_ids": ids.to(device), "attention_mask": attn.to(device), "labels": labels.to(device)}
+
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--export"]:
+    LOCAL.mkdir(exist_ok=True)
+    for name in sys.argv[2:]:
+        pairs = load_pairs(name)
+        with open(LOCAL / f"{name}.jsonl", "w", encoding="utf-8", newline="\n") as f:
+            for p in pairs:
+                f.write(json.dumps(p, ensure_ascii=False) + "\n")
+        print(name, len(pairs), "pairs ->", LOCAL / f"{name}.jsonl")

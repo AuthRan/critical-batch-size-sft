@@ -5,3 +5,4 @@ runs/*.jsonl
 runs/analysis/
 runs/ckpt/
 .pytest_cache/
+corpora/
