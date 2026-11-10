@@ -89,7 +89,6 @@ We fine-tune all parameters of SmolLM2-135M and SmolLM2-360M~\cite{allal2025smol
 corpus & examples & examples & SmolLM2 & Qwen3 & example & $B=512$ & $B=32{,}768$ \\
 \midrule
 \input{tables/corpora.tex}
-\bottomrule
 \end{tabular}
 \end{table}
 
@@ -151,7 +150,6 @@ Figure~\ref{fig:lrstar} shows $\eta^*(B)$ for the nine settings, normalised by i
 model & corpus & $\alpha$ [68\% interval] & $\alpha_{\le 4\mathrm{k}}$ & $\alpha_{\ge 4\mathrm{k}}$ & peak & $\alpha$ to peak & CBS & CBS$_{0.01}$ & steps & $\Delta L_{32\mathrm{k}}$ \\
 \midrule
 \input{tables/main.tex}
-\bottomrule
 \end{tabular}
 \end{table}
 
@@ -184,7 +182,6 @@ Table~\ref{tab:noise} and Figure~\ref{fig:noise} give $\bsimple$ along the epoch
 model & corpus & 0\% & 25\% & 50\% & 75\% & 100\% & run average & 25--100\% & CBS \\
 \midrule
 \input{tables/noise.tex}
-\bottomrule
 \end{tabular}
 \end{table}
 
@@ -213,7 +210,6 @@ Table~\ref{tab:branched} and Figure~\ref{fig:branched} show the branched critica
 setting & checkpoint & $\Delta$ & 3-lr & bracketed & bracketed, $\epsilon=0.01$ & fixed-data & $\bsimple(t)$ \\
 \midrule
 \input{tables/branched.tex}
-\bottomrule
 \end{tabular}
 \end{table}
 
@@ -242,7 +238,6 @@ Table~\ref{tab:controls} gives the two controls in the pilot setting. Holding th
 $B$ & variant & $\eta^*$ & 68\% interval & loss at $\eta^*$ & ratio \\
 \midrule
 \input{tables/controls.tex}
-\bottomrule
 \end{tabular}
 \end{table}
 
@@ -260,7 +255,6 @@ The 8-bit optimizer stack used for Qwen3-0.6B was compared with standard AdamW o
 $B$ & $\eta^*$ & 68\% interval & $\eta^*$ & 68\% interval & ratio & $\Delta L$ \\
 \midrule
 \input{tables/control_8bit.tex}
-\bottomrule
 \end{tabular}
 \end{table}
 

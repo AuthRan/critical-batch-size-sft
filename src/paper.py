@@ -329,7 +329,7 @@ def write_tables(N, cells):
         a, q = N["corpora"][f"SmolLM2-135M|{d}"], N["corpora"][f"Qwen3-0.6B-Base|{d}"]
         rows.append(f"{CNAME[d]} & {comma(a['n_train'])} & {comma(a['n_holdout'])} & {a['tokens_epoch'] / 1e6:.2f}M & {q['tokens_epoch'] / 1e6:.2f}M & "
                     f"{a['tokens_per_example']:.0f} & {comma(a['tokens_epoch'] / 512)} & {a['tokens_epoch'] / 32768:.0f} \\\\")
-    (T / "corpora.tex").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (T / "corpora.tex").write_text("\n".join(rows) + "\n\\bottomrule\n", encoding="utf-8")
 
     # main results
     rows = []
@@ -344,7 +344,7 @@ def write_tables(N, cells):
                         f"{comma(s['cbs_fixed_data_eps01'])} & {s['steps_at_cbs']:.0f} & {s['loss_pen_32k']:.3f} \\\\")
         if m != MODELS[-1]:
             rows.append("\\midrule")
-    (T / "main.tex").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (T / "main.tex").write_text("\n".join(rows) + "\n\\bottomrule\n", encoding="utf-8")
 
     # noise
     rows = []
@@ -355,7 +355,7 @@ def write_tables(N, cells):
                         + f" & {kfmt(s['B_avg'])} & {kfmt(s['B_late'])} & {comma(s['cbs_fixed_data'])} \\\\")
         if m != MODELS[-1]:
             rows.append("\\midrule")
-    (T / "noise.tex").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (T / "noise.tex").write_text("\n".join(rows) + "\n\\bottomrule\n", encoding="utf-8")
 
     # branched, in the figure's order
     rows = []
@@ -368,7 +368,7 @@ def write_tables(N, cells):
             name = f"{NAME[b['model']]}, {CNAME[b['dataset']]}" if j == 0 else ""
             rows.append(f"{name} & {b['frac'] * 100:.0f}\\% & {b['delta'] * 100:g}\\% & {c(b['cbs_core'], b['core_censored'])} & "
                         f"{c(b['cbs'], b['censored'])} & {c(b['cbs_eps01'], b['cbs_eps01'] == 32768)} & {comma(b['fixed'])} & {kfmt(b['B_simple_t'])} \\\\")
-    (T / "branched.tex").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (T / "branched.tex").write_text("\n".join(rows) + "\n\\bottomrule\n", encoding="utf-8")
 
     # controls
     ctl = N["controls"]
@@ -381,14 +381,14 @@ def write_tables(N, cells):
             rows.append(f" & {lab} & {tsci(v['lr'])} & {tci(*v['ci'])} & {v['loss']:.4f} & {v['ratio']:.2f} \\\\")
         if B == 512:
             rows.append("\\midrule")
-    (T / "controls.tex").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (T / "controls.tex").write_text("\n".join(rows) + "\n\\bottomrule\n", encoding="utf-8")
 
     rows = []
     for B in BS:
         a, b = cells[ckey("SmolLM2-135M", "dolly", B, opt="adamw")], N["control_8bit"]["by_B"][B]
         rows.append(f"{comma(B)} & {tsci(a['lr_star'])} & {tci(a['lr_lo'], a['lr_hi'])} & {tsci(b['lr'])} & {tci(*b['ci'])} & {b['ratio']:.2f} & "
                     f"{tnum(b['loss_diff'] * 1000, '+.1f')} \\\\")
-    (T / "control_8bit.tex").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (T / "control_8bit.tex").write_text("\n".join(rows) + "\n\\bottomrule\n", encoding="utf-8")
 
     # appendix: every main-grid cell
     rows = []
