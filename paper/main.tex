@@ -57,7 +57,7 @@ O'Neill et al.~\cite{oneill2026} study SFT of Qwen3 and Llama models on propriet
 
 \section{Pre-registration and hypotheses}\label{sec:prereg}
 
-The study plan was first written on 19 October 2026. It was revised after a pilot grid on SmolLM2-360M with Dolly and after a full reading of the closest prior work, and then frozen on 24 October 2026, before any main-grid, noise-scale or control result had been seen. The frozen plan is tagged in the project repository (tag \texttt{prereg-v1}). The repository was first pushed to a public host after the experiments had finished, so the date of the tag is our own record and not a third-party timestamp. Three revisions made before the freeze affect the hypotheses below. H2 originally predicted a small noise scale at the first step, by analogy with pretraining, and was reversed after a 30-step smoke run measured about 99,000 tokens; H4 originally predicted growth with model size and was changed to invariance after reading Zhang et al.~\cite{zhang2025cbs}, Merrill et al.~\cite{merrill2025} and Lee and Lee~\cite{lee2026}, who all find the critical or optimal batch size roughly independent of model size; and H1b was added after reading Li et al.~\cite{li2024surge}. After the freeze, every change was entered in a dated log that records whether any result had been seen (Appendix~\ref{app:deviations}).
+The study plan was first written on 19 October 2026. It was revised after a pilot grid on SmolLM2-360M with Dolly and after a full reading of the closest prior work, and then frozen on 24 October 2026, before any main-grid, noise-scale or control result had been seen. The frozen plan is tagged in the project repository (tag \texttt{prereg-v1}). The repository was first pushed to GitHub after the experiments had finished, so the date of the tag is our own record and not a third-party timestamp. Three revisions made before the freeze affect the hypotheses below. H2 originally predicted a small noise scale at the first step, by analogy with pretraining, and was reversed after a 30-step smoke run measured about 99,000 tokens; H4 originally predicted growth with model size and was changed to invariance after reading Zhang et al.~\cite{zhang2025cbs}, Merrill et al.~\cite{merrill2025} and Lee and Lee~\cite{lee2026}, who all find the critical or optimal batch size roughly independent of model size; and H1b was added after reading Li et al.~\cite{li2024surge}. After the freeze, every change was entered in a dated log that records whether any result had been seen (Appendix~\ref{app:deviations}).
 
 The frozen hypotheses, with their falsification conditions, are given below in shortened form. Here $\eta^*(B)$ is the optimal peak learning rate at batch size $B$, the exponent $\alpha$ is the slope of $\log \eta^*$ against $\log B$, and the fixed-data and branched critical batch sizes are defined in Section~\ref{sec:cbs}.
 \begin{description}
@@ -82,6 +82,7 @@ We fine-tune all parameters of SmolLM2-135M and SmolLM2-360M~\cite{allal2025smol
 \caption{Corpora. Supervised tokens are response tokens plus the end-of-sequence token, counted with the SmolLM2 tokenizer and, in the fifth column, with the Qwen3 tokenizer. The last two columns give the number of optimizer steps in one epoch at the smallest and the largest batch size (SmolLM2 tokenizer).}
 \label{tab:corpora}
 \small
+\setlength{\tabcolsep}{5pt}
 \begin{tabular}{lrrrrrrr}
 \toprule
  & train & held-out & \multicolumn{2}{c}{supervised tokens per epoch} & tokens per & \multicolumn{2}{c}{steps per epoch} \\
@@ -144,10 +145,10 @@ Figure~\ref{fig:lrstar} shows $\eta^*(B)$ for the nine settings, normalised by i
 \caption{Learning rate and fixed-data critical batch size (CBS) in the nine settings. $\alpha$: exponent of $\eta^*(B)$ over all unflagged columns, with its 68\% interval (pre-registered); $\alpha_{\le 4\mathrm{k}}$ and $\alpha_{\ge 4\mathrm{k}}$: the same fit over $B \le 4{,}096$ and $B \ge 4{,}096$ (descriptive); peak: the batch size with the largest $\eta^*$ where this is not the largest batch, with the exponent fitted up to it. CBS in supervised tokens per step at $\epsilon = 0.005$ and $0.01$; $^{\ast}$: at the top of the grid, so a lower bound. Steps: optimizer steps in one epoch at the CBS. $\Delta L_{32\mathrm{k}}$: held-out loss at $B=32{,}768$ minus the lowest loss over all $B$, in nats.}
 \label{tab:main}
 \footnotesize
-\setlength{\tabcolsep}{4pt}
+\setlength{\tabcolsep}{3.5pt}
 \begin{tabular}{llcrrrrrrrr}
 \toprule
-model & corpus & $\alpha$ [68\% interval] & $\alpha_{\le 4\mathrm{k}}$ & $\alpha_{\ge 4\mathrm{k}}$ & peak & $\alpha$ to peak & CBS & CBS$_{0.01}$ & steps & $\Delta L_{32\mathrm{k}}$ \\
+model & corpus & $\alpha$ [68\% interval] & $\alpha_{\le 4\mathrm{k}}$ & $\alpha_{\ge 4\mathrm{k}}$ & peak & \begin{tabular}[b]{@{}r@{}}$\alpha$ to\\ peak\end{tabular} & CBS & CBS$_{0.01}$ & steps & $\Delta L_{32\mathrm{k}}$ \\
 \midrule
 \input{tables/main.tex}
 \end{tabular}
@@ -202,12 +203,15 @@ Table~\ref{tab:branched} and Figure~\ref{fig:branched} show the branched critica
 
 \begin{table}[t]
 \centering
-\caption{Branched critical batch size (supervised tokens per step) by checkpoint and window $\Delta$ (fraction of the epoch). 3-lr: the planned sweep of three learning rates; bracketed: with the extra learning rates added at sweep edges. $^{\ast}$: at the top of the grid, so a lower bound. Fixed-data: the CBS of Table~\ref{tab:main}. $\bsimple(t)$: noise scale at the same fraction of the noise run (k $=1{,}000$; exploratory comparison).}
+\caption{Branched critical batch size (supervised tokens per step) by checkpoint and window $\Delta$ (fraction of the epoch). 3-lr: the planned sweep of three learning rates, $\epsilon = 0.005$; bracketed: with the extra learning rates added at sweep edges, at $\epsilon = 0.005$ and $0.01$. $^{\ast}$: at the top of the grid, so a lower bound. Fixed-data: the CBS of Table~\ref{tab:main}. $\bsimple(t)$: noise scale at the same fraction of the noise run (k $=1{,}000$; exploratory comparison).}
 \label{tab:branched}
-\small
+\footnotesize
+\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrrrrrrr}
 \toprule
-setting & checkpoint & $\Delta$ & 3-lr & bracketed & bracketed, $\epsilon=0.01$ & fixed-data & $\bsimple(t)$ \\
+ & & & & \multicolumn{2}{c}{bracketed} & & \\
+\cmidrule(lr){5-6}
+setting & checkpoint & $\Delta$ & 3-lr & $\epsilon=0.005$ & $\epsilon=0.01$ & fixed-data & $\bsimple(t)$ \\
 \midrule
 \input{tables/branched.tex}
 \end{tabular}
@@ -491,15 +495,15 @@ The plan's log records eight departures after the freeze, each with its date and
 \section{All grid cells}\label{app:cells}
 
 \footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{longtable}{llrrcccccl}
-\caption{Fitted optimal learning rate for every column of the nine main grids. $\bar{B}$: realised mean supervised tokens per step. Flag: ``edge'' if the best grid point is at the edge of its list or next to a diverged learning rate. Seeds: the fewest seeds at any learning rate in the column (the best point and its neighbours have three). Diverged: number of diverged seeds per learning rate.}\label{tab:cells}\\
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{llrrccccl}
+\caption{Fitted optimal learning rate for every column of the nine main grids. $\bar{B}$: realised mean supervised tokens per step. $^{\dagger}$: flagged, because the best grid point is at the edge of its list or next to a diverged learning rate. Loss: held-out loss at $\eta^*$, the vertex value of the fitted parabola. Seeds: the fewest seeds at any learning rate in the column (the best point and its neighbours have three). Diverged: number of diverged seeds per learning rate.}\label{tab:cells}\\
 \toprule
-model & corpus & $B$ & $\bar{B}$ & $\eta^*$ & 68\% interval & loss at $\eta^*$ & flag & seeds & diverged \\
+model & corpus & $B$ & $\bar{B}$ & $\eta^*$ & 68\% interval & loss & seeds & diverged \\
 \midrule
 \endfirsthead
 \toprule
-model & corpus & $B$ & $\bar{B}$ & $\eta^*$ & 68\% interval & loss at $\eta^*$ & flag & seeds & diverged \\
+model & corpus & $B$ & $\bar{B}$ & $\eta^*$ & 68\% interval & loss & seeds & diverged \\
 \midrule
 \endhead
 \bottomrule

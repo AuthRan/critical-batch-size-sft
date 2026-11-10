@@ -304,7 +304,8 @@ def tsci(x, digits: int = 2) -> str:
 
 
 def tci(lo, hi) -> str:
-    return f"[{tsci(lo, 1)}, {tsci(hi, 1)}]"
+    d = 1 if f"{lo:.1e}" != f"{hi:.1e}" else 2  # one more digit when a narrow interval would print as [x, x]
+    return f"[{tsci(lo, d)}, {tsci(hi, d)}]"
 
 
 def tnum(x, fmt: str) -> str:
@@ -398,9 +399,10 @@ def write_tables(N, cells):
                 f = cells[ckey(m, d, B)]
                 lab = f"{NAME[m]} & {CNAME[d]}" if i == 0 else " & "
                 div = "; ".join(f"{tsci(float(k), 1)}: {v}" for k, v in f["diverged"].items()) or "--"
-                rows.append(f"{lab} & {comma(B)} & {comma(f['B_real'])} & {tsci(f['lr_star'])} & {tci(f['lr_lo'], f['lr_hi'])} & {f['loss_star']:.4f} & "
-                            f"{f['flag']} & {f['seeds']} & {div} \\\\")
-            rows.append("\\midrule")
+                star = tsci(f["lr_star"]) + ("$^{\\dagger}$" if f["flag"] != "ok" else "")
+                rows.append(f"{lab} & {comma(B)} & {comma(f['B_real'])} & {star} & {tci(f['lr_lo'], f['lr_hi'])} & {f['loss_star']:.4f} & "
+                            f"{f['seeds']} & {div} \\\\")
+            rows.append("\\addlinespace")  # not \midrule: a rule before a page break doubles the longtable foot rule
     (T / "cells.tex").write_text("\n".join(rows[:-1]) + "\n", encoding="utf-8")
 
 
@@ -458,11 +460,15 @@ def figures(N, cells, recs, h6):
                     ax.plot(s["B_real"][B], yy, marker=MARK[m], ms=6.5, mfc="white", mec=COLOR[m], mew=1.0, zorder=4)
         btick(ax)
         ax.set_yscale("log")
+        ax.set_yticks([0.25, 0.5, 1, 2, 4])
+        ax.set_yticklabels(["0.25", "0.5", "1", "2", "4"])
+        ax.minorticks_off()
+        ax.set_ylim(0.17, 4.6)
         ax.set_title(CNAME[d])
         ax.set_xlabel("supervised tokens per step $B$")
         ax.set_xlim(400, 42000)
     axes[0].set_ylabel(r"$\eta^*(B)\,/\,\eta^*(4096)$")
-    axes[0].text(2600, 0.115, r"dashed: $\propto B^{1/2}$", color=MUTED, fontsize=7)
+    axes[0].text(2600, 0.2, r"dashed: $\propto B^{1/2}$", color=MUTED, fontsize=7)
     axes[0].legend(loc="upper left")
     fig.tight_layout(w_pad=0.6)
     save(fig, F, "lr_star")

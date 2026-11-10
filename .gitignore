@@ -6,3 +6,7 @@ runs/analysis/
 runs/ckpt/
 .pytest_cache/
 corpora/
+paper/*.log
+paper/*.aux
+paper/*.out
+paper/main.pdf
