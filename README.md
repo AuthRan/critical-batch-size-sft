@@ -4,7 +4,7 @@ See `PLAN.md` for the question, the pre-registered hypotheses, the design and th
 
 ## Setup on the GPU machine (Windows, 2x RTX 2080 Ti, over SSH)
 
-The project lives in `G:\paper2_sft_cbs` and the Hugging Face cache in `G:\hf_cache` (`HF_HOME`), both moved off C: on 2026-10-27. The PC moved from <gpu-host> to <gpu-host> between 2026-10-28 and 10-31 without a reboot (a new DHCP lease), so check it with `ipconfig` at the console if ssh times out. The laptop logs in with the key `~/.ssh/id_ed25519_<gpu-host>` (kept under its old name; a `Host <gpu-host>` entry in `~/.ssh/config`), so `ssh` and `scp` ask no password. From the laptop, copy the project:
+The project lives in `G:\paper2_sft_cbs` and the Hugging Face cache in `G:\hf_cache` (`HF_HOME`), both moved off C: on 2026-10-27. The PC moved from <gpu-host> to <gpu-host> between 2026-10-28 and 10-31 without a reboot (a new DHCP lease), and to <gpu-host> around 2026-11-10; .138 is now another machine with a different host key. If ssh times out or a host key changes, find the PC by its ED25519 host key (<host-key-fingerprint>) or check `ipconfig` at the console; never accept a new key. The laptop logs in with the key `~/.ssh/id_ed25519_<gpu-host>` (kept under its old name; a `Host <gpu-host>` entry in `~/.ssh/config`), so `ssh` and `scp` ask no password. From the laptop, copy the project:
 
 ```
 scp -r "D:\Research paper\Paper 2" <user>@<gpu-host>:G:/paper2_sft_cbs
