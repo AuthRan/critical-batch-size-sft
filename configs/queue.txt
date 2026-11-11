@@ -48,6 +48,17 @@ configs/auto/branch_SmolLM2-135M_gsm8k_f0.00_d0.25_ext__2.json
 configs/auto/branch_SmolLM2-135M_gsm8k_f0.50_d0.125_ext__2.json
 configs/control_8bit_SmolLM2-135M_dolly.json
 configs/control_8bit_SmolLM2-135M_dolly_seeds.json
+# confirmatory study, PLAN.md section 11 (tag prereg-confirm-v1), queued 2026-11-11
+configs/scout_confirm.json
+configs/noise_rep_SmolLM2-135M_dolly.json
+configs/noise_rep_SmolLM2-135M_oasst1.json
+configs/noise_rep_SmolLM2-135M_gsm8k.json
+configs/noise_rep_SmolLM2-360M_dolly.json
+configs/noise_rep_SmolLM2-360M_oasst1.json
+configs/noise_rep_SmolLM2-360M_gsm8k.json
+configs/noise_rep_Qwen3-0.6B-Base_dolly.json
+configs/noise_rep_Qwen3-0.6B-Base_oasst1.json
+configs/noise_rep_Qwen3-0.6B-Base_gsm8k.json
 # auto: new configs go above this line
 configs/grid_Qwen3-0.6B-Base_gsm8k.json
 configs/grid_Qwen3-0.6B-Base_dolly.json
