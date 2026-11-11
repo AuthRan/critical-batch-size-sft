@@ -18,5 +18,5 @@ foreach ($f in Get-ChildItem runs\*_gpu*.log | Sort-Object LastWriteTime -Descen
 }
 Select-String -Path runs\*_gpu*.log -Pattern 'FAILED' | Group-Object Filename | ForEach-Object { "FAILED x$($_.Count) in $($_.Name)" }
 # Get-PSDrive reports 0 free for this account on the GPU machine; dir does not
-if ((cmd /c dir /-c runs) -join " " -match "(\d+) bytes free") { "free on C: " + [math]::Round([double]$Matches[1] / 1GB, 1) + " GB" }
+if ((cmd /c dir /-c runs) -join " " -match "(\d+) bytes free") { "free on the project drive (G:) " + [math]::Round([double]$Matches[1] / 1GB, 1) + " GB" }
 nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv,noheader
