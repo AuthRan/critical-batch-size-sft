@@ -22,6 +22,7 @@ from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).parent))
 import analyze  # noqa: E402
+import confirm  # noqa: E402
 import h6_transfer  # noqa: E402
 
 DATA, OUT = Path("data"), Path("paper")
@@ -270,6 +271,7 @@ def main():
     write_numbers_md(N)
     write_tables(N, cells)
     figures(N, cells, recs, h6)
+    confirm_figure(confirm.main())  # the confirmatory study (PLAN.md section 11): paper/confirm.*, tables/confirm_*.tex
 
 
 # ---------------------------------------------------------------- text
@@ -603,6 +605,59 @@ def figures(N, cells, recs, h6):
     fig.text(0.04, 0.03, "$B$ (tokens):", fontsize=7)
     fig.tight_layout(rect=(0, 0.08, 1, 1), w_pad=0.6)
     save(fig, F, "lr_curves")
+    plt.close(fig)
+
+
+def confirm_figure(C):
+    """The three new corpora of the confirmatory study: lr*(B) with B_late (C2), and the loss gap with the C1 interval."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    style(plt)
+    F = OUT / "figures"
+    F.mkdir(parents=True, exist_ok=True)
+    fig, axes = plt.subplots(2, 3, figsize=(6.3, 4.3))
+    for j, d in enumerate(confirm.NEW):
+        v = C["new"][d]
+        Bx = [v["B_real"][B] for B in BS]
+        ax = axes[0, j]
+        x = np.array([256 * 1.6, 32768 * 1.6])
+        ax.plot(x, (x / 4096) ** 0.5, color=GREY, lw=0.9, ls="--", zorder=1)
+        ax.axvline(v["B_late"], color=ORANGE, lw=1.1, ls=":", zorder=2)
+        ref = v["lr_star"][4096]
+        y = np.array([v["lr_star"][B] / ref for B in BS])
+        lo = y - np.array([v["lr_ci"][B][0] / ref for B in BS])
+        hi = np.array([v["lr_ci"][B][1] / ref for B in BS]) - y
+        ax.errorbar(Bx, y, yerr=[lo, hi], color=BLUE, marker="o", ms=4.5, capsize=1.5, elinewidth=0.7, zorder=3,
+                    markeredgecolor="white", markeredgewidth=0.5)
+        btick(ax)
+        ax.set_yscale("log")
+        ax.set_yticks([0.25, 0.5, 1, 2, 4])
+        ax.set_yticklabels(["0.25", "0.5", "1", "2", "4"])
+        ax.minorticks_off()
+        ax.set_ylim(0.17, 4.6)
+        ax.set_xlim(400, 42000)
+        ax.set_title(confirm.CNAME[d])
+
+        ax = axes[1, j]
+        ax.axvspan(*v["c1_interval"], color=ORANGE, alpha=0.13, lw=0, zorder=0)
+        ax.axhline(0.005, color=GREY, lw=0.9, ls="--", zorder=1)
+        best = min(v["loss_star"].values())
+        gap = [v["loss_star"][B] - best for B in BS]
+        ax.plot(Bx, gap, color=BLUE, marker="o", markeredgecolor="white", markeredgewidth=0.5, zorder=3)
+        k = BS.index(v["cbs"])
+        ax.plot(Bx[k], gap[k], marker="o", ms=8, mfc="none", mec=INK, mew=0.9, zorder=4)
+        btick(ax)
+        ax.set_xlim(400, 42000)
+        ax.set_ylim(-0.001 if max(gap) < 0.05 else -0.008, max(gap) * 1.1)
+        ax.set_xlabel("supervised tokens per step $B$")
+    axes[0, 0].set_ylabel(r"$\eta^*(B)\,/\,\eta^*(4096)$")
+    axes[1, 0].set_ylabel("gap to the best $B$ (nats)")
+    axes[0, 0].text(2600, 0.2, r"dashed: $\propto B^{1/2}$", color=MUTED, fontsize=7)
+    fig.tight_layout(h_pad=0.9, w_pad=0.6)
+    save(fig, F, "confirm")
     plt.close(fig)
 
 

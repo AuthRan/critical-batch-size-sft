@@ -13,6 +13,7 @@
 
 \newcommand{\bsimple}{B_{\mathrm{simple}}}
 \newcommand{\bnoise}{B_{\mathrm{noise}}}
+\newcommand{\blate}{B_{\mathrm{late}}}
 
 \title{The Critical Batch Size of Supervised Fine-Tuning}
 \author{Ashutosh Ranjan}
@@ -22,7 +23,7 @@
 \maketitle
 
 \begin{abstract}
-In supervised fine-tuning (SFT) the batch size is usually chosen to fit memory and the learning rate is then retuned for it. We measure how the optimal learning rate, and the loss reached at that learning rate, depend on the batch size in full-parameter SFT of three small language models (SmolLM2-135M, SmolLM2-360M and Qwen3-0.6B-Base) on three public corpora (Dolly, OASST1 and GSM8K). Batch size is counted exactly in supervised tokens per optimizer step and ranges from 512 to 32,768. The hypotheses, thresholds and analysis were fixed before the main experiments, and every later change to the plan is reported. Up to 4,096 tokens per step the optimal learning rate grows close to the square root of the batch size in all nine settings (fitted exponents 0.46 to 0.65); beyond that it grows more slowly on Dolly and OASST1 and falls on GSM8K. At a budget of one epoch the critical batch size, the largest batch whose held-out loss is within 0.005 nats of every smaller batch, is 16,384 tokens on Dolly for all three models, 8,192 to 32,768 on OASST1, and 2,048 to 8,192 on GSM8K. Measurements that branch from intermediate checkpoints show the critical batch size growing during training, as it does in pretraining. The gradient noise scale is small at the first step and 4 to 88 times larger a quarter of the way through the epoch, so its run average, which is dominated by the first step, ranks the critical batch sizes only moderately well (Spearman 0.62). Holding Adam's $\beta_2$ half-life fixed in tokens, or clipping gradients, moves the optimal learning rate by less than 1.3 times. Finally, the retuned learning rate is not neutral for other data: where retuning raises it, at large batch sizes, the held-out loss on the two corpora not used for training gets worse in 22 of 26 cases.
+In supervised fine-tuning (SFT) the batch size is usually chosen to fit memory and the learning rate is then retuned for it. We measure how the optimal learning rate, and the loss reached at that learning rate, depend on the batch size in full-parameter SFT of three small language models (SmolLM2-135M, SmolLM2-360M and Qwen3-0.6B-Base) on three public corpora (Dolly, OASST1 and GSM8K). Batch size is counted exactly in supervised tokens per optimizer step and ranges from 512 to 32,768. The hypotheses, thresholds and analysis were fixed before the main experiments, and every later change to the plan is reported. Up to 4,096 tokens per step the optimal learning rate grows close to the square root of the batch size in all nine settings (fitted exponents 0.46 to 0.65); beyond that it grows more slowly on Dolly and OASST1 and falls on GSM8K. At a budget of one epoch the critical batch size, the largest batch whose held-out loss is within 0.005 nats of every smaller batch, is 16,384 tokens on Dolly for all three models, 8,192 to 32,768 on OASST1, and 2,048 to 8,192 on GSM8K. Measurements that branch from intermediate checkpoints show the critical batch size growing during training, as it does in pretraining. The gradient noise scale is small at the first step and 4 to 88 times larger a quarter of the way through the epoch, so its run average, which is dominated by the first step, ranks the critical batch sizes only moderately well (Spearman 0.62). The noise scale measured after the first quarter of the epoch does better: in a second pre-registered study, one third of it was within a factor of 2 of the fixed-data critical batch size on three new corpora, and in 8 of the 9 original settings when their noise runs were repeated with a new seed. Holding Adam's $\beta_2$ half-life fixed in tokens, or clipping gradients, moves the optimal learning rate by less than 1.3 times. Finally, the retuned learning rate is not neutral for other data: where retuning raises it, at large batch sizes, the held-out loss on the two corpora not used for training gets worse in 22 of 26 cases.
 \end{abstract}
 
 \section{Introduction}
@@ -31,9 +32,9 @@ Supervised fine-tuning on instruction and response pairs is the usual first step
 
 Supervised fine-tuning differs from pretraining in several ways that could change these results. It starts from a model whose loss is already low, the corpora hold a few thousand to a few hundred thousand examples, and one epoch at a large batch size is only a few dozen optimizer steps. The fine-tuning literature reports good learning rates and batch sizes for particular recipes~\cite{oneill2026,pareja2024,lee2026}, but we are not aware of a measurement of the critical batch size of SFT, of how it changes during a run, or of whether the gradient noise scale predicts it. The closest study, by O'Neill et al.~\cite{oneill2026}, sweeps learning rate and batch size for SFT of models up to 235B parameters, but gives full fine-tuning only two batch sizes. Lee and Lee~\cite{lee2026} show that batch size is a first-order hyperparameter for LoRA, and do not study full fine-tuning.
 
-In this paper we measure these quantities for full-parameter SFT of three small public models, SmolLM2-135M, SmolLM2-360M~\cite{allal2025smollm2} and Qwen3-0.6B-Base~\cite{qwen3}, on three public corpora, Dolly~\cite{dolly2023}, OASST1~\cite{kopf2023oasst} and GSM8K~\cite{cobbe2021gsm8k}. The batch size is counted exactly in supervised tokens per optimizer step, from 512 to 32,768, and each of the nine model and corpus settings is trained for one epoch on a seven-by-seven grid of batch size and learning rate. Around this grid we measure the gradient noise scale at five points of the epoch, measure the critical batch size a second way by branching from intermediate checkpoints as Merrill et al.~\cite{merrill2025} do for pretraining, run controls for Adam's $\beta_2$, for gradient clipping and for the optimizer used with the largest model, and score every run on the held-out sets of the two corpora it was not trained on. The hypotheses, their thresholds and the analysis were written down and frozen before the main experiments (Section~\ref{sec:prereg}). Eight later departures from that plan are listed in Appendix~\ref{app:deviations}, and analyses that were not planned are labelled as exploratory where they appear.
+In this paper we measure these quantities for full-parameter SFT of three small public models, SmolLM2-135M, SmolLM2-360M~\cite{allal2025smollm2} and Qwen3-0.6B-Base~\cite{qwen3}, on three public corpora, Dolly~\cite{dolly2023}, OASST1~\cite{kopf2023oasst} and GSM8K~\cite{cobbe2021gsm8k}. The batch size is counted exactly in supervised tokens per optimizer step, from 512 to 32,768, and each of the nine model and corpus settings is trained for one epoch on a seven-by-seven grid of batch size and learning rate. Around this grid we measure the gradient noise scale at five points of the epoch, measure the critical batch size a second way by branching from intermediate checkpoints as Merrill et al.~\cite{merrill2025} do for pretraining, run controls for Adam's $\beta_2$, for gradient clipping and for the optimizer used with the largest model, and score every run on the held-out sets of the two corpora it was not trained on. The hypotheses, their thresholds and the analysis were written down and frozen before the main experiments (Section~\ref{sec:prereg}). Eight later departures from that plan are listed in Appendix~\ref{app:deviations}, and analyses that were not planned are labelled as exploratory where they appear. One pattern found in this way, that the noise scale after the first quarter of the epoch tracks the critical batch size, was then tested in a second pre-registered study on three new corpora and with repeated noise runs (Section~\ref{sec:confirm}).
 
-The results can be summarised as follows. Up to 4,096 tokens per step the optimal learning rate follows the square-root rule closely in all nine settings. Beyond that point it grows more slowly on Dolly and OASST1 and falls again on GSM8K, which is the shape predicted by Li et al.~\cite{li2024surge}. At a fixed budget of one epoch the critical batch size is 16,384 tokens on Dolly for all three models, between 8,192 and 32,768 on OASST1, and between 2,048 and 8,192 on GSM8K, and below it the held-out loss is flat to within 0.005 nats. The branched measurements show the critical batch size growing during training, from 1,024 to 8,192 tokens at the start of fine-tuning to 32,768 or more on Dolly later in the epoch. The gradient noise scale did not behave as we had predicted. It is small at the first step, between 300 and 8,800 tokens, and several times to two orders of magnitude larger after a quarter of the epoch, because the mean gradient shrinks sharply once the model has adapted to the format of the responses. Its run average, the predictor named in our plan, therefore ranks the critical batch sizes only moderately well. Holding the $\beta_2$ half-life fixed in tokens or clipping the gradient changes the optimal learning rate by less than 1.3 times, and the 8-bit optimizer used for Qwen3 does not change it measurably. Finally, the learning rate that is best for the fine-tuning corpus is not best for other data: at large batch sizes, where the retuned learning rate is higher, the loss on the other two corpora gets worse in 22 of 26 cases.
+The results can be summarised as follows. Up to 4,096 tokens per step the optimal learning rate follows the square-root rule closely in all nine settings. Beyond that point it grows more slowly on Dolly and OASST1 and falls again on GSM8K, which is the shape predicted by Li et al.~\cite{li2024surge}. At a fixed budget of one epoch the critical batch size is 16,384 tokens on Dolly for all three models, between 8,192 and 32,768 on OASST1, and between 2,048 and 8,192 on GSM8K, and below it the held-out loss is flat to within 0.005 nats. The branched measurements show the critical batch size growing during training, from 1,024 to 8,192 tokens at the start of fine-tuning to 32,768 or more on Dolly later in the epoch. The gradient noise scale did not behave as we had predicted. It is small at the first step, between 300 and 8,800 tokens, and several times to two orders of magnitude larger after a quarter of the epoch, because the mean gradient shrinks sharply once the model has adapted to the format of the responses. Its run average, the predictor named in our plan, therefore ranks the critical batch sizes only moderately well. The noise scale averaged over the rest of the epoch does better: divided by 3, it was within a factor of 2 of the fixed-data critical batch size on all three corpora of the confirmatory study, although some of the confirmatory criteria were met only at their margins. Holding the $\beta_2$ half-life fixed in tokens or clipping the gradient changes the optimal learning rate by less than 1.3 times, and the 8-bit optimizer used for Qwen3 does not change it measurably. Finally, the learning rate that is best for the fine-tuning corpus is not best for other data: at large batch sizes, where the retuned learning rate is higher, the loss on the other two corpora gets worse in 22 of 26 cases.
 
 \section{Background and related work}\label{sec:related}
 
@@ -125,7 +126,7 @@ In the pilot setting, the columns $B = 512$ and $B = 32{,}768$ were rerun with f
 
 \subsection{Compute}
 
-All experiments ran on the two RTX 2080 Ti GPUs of one shared desktop: 1,059 grid and control runs, 365 branched runs (three base runs and 362 branches), and 24 noise-scale and smoke runs, about 525 GPU-hours in total. A one-epoch run of SmolLM2-135M on Dolly took a median of 17.7 minutes at $B = 512$ and 11.9 minutes at $B = 32{,}768$, so on this hardware small batches are slower per token.
+All experiments ran on the two RTX 2080 Ti GPUs of one shared desktop: 1,059 grid and control runs, 365 branched runs (three base runs and 362 branches), and 24 noise-scale and smoke runs, about 525 GPU-hours in total. The confirmatory study of Section~\ref{sec:confirm} added 276 grid runs and 12 noise runs, about 57 GPU-hours. A one-epoch run of SmolLM2-135M on Dolly took a median of 17.7 minutes at $B = 512$ and 11.9 minutes at $B = 32{,}768$, so on this hardware small batches are slower per token.
 
 \section{Results}\label{sec:results}
 
@@ -195,7 +196,7 @@ model & corpus & 0\% & 25\% & 50\% & 75\% & 100\% & run average & 25--100\% & CB
 
 This shape determines how well the pre-registered predictor can work. The run average divides the mean of $\mathrm{tr}(\Sigma)$ by the mean of $|G|^2$, and the mean of $|G|^2$ is dominated by the first point, so the run average stays within a factor of about 3 of the first-step value and far below the noise scale over most of the epoch. Against the fixed-data critical batch size its Spearman correlation is 0.62 and its median ratio is 0.52, with five of the nine settings within a factor of 2 and ratios ranging from 0.09 to 1.62. This lies between the support and falsification thresholds of H3 (a correlation of at least 0.7 for support and below 0.4 for falsification, with the median ratio barely inside $[0.5, 2]$), so H3 is inconclusive.
 
-The following analysis was not planned and was done after the results above had been seen. Leaving out the first point, the average over the 25\% to 100\% points has a Spearman correlation of 0.93 with the fixed-data critical batch size, but it is 2.4 to 6.4 times larger (median 3.0), so none of the nine settings is within a factor of 2. It also places the three GSM8K peaks of $\eta^*$ at 0.62 to 0.83 of the noise scale, within the factor of 2 that H1b asked for, and it is above 32,768 for all three models on Dolly, where no peak appears. With the SmolLM2 models on OASST1 it predicts a peak near 20,000 to 25,000 tokens, where $\eta^*$ instead keeps rising slowly. These observations suggest that a noise scale measured after the first part of the run behaves much as Li et al.~\cite{li2024surge} predict, but they come from the same data that motivated them and need a separate test.
+The following analysis was not planned and was done after the results above had been seen. Leaving out the first point, the average over the 25\% to 100\% points has a Spearman correlation of 0.93 with the fixed-data critical batch size, but it is 2.4 to 6.4 times larger (median 3.0), so none of the nine settings is within a factor of 2. It also places the three GSM8K peaks of $\eta^*$ at 0.62 to 0.83 of the noise scale, within the factor of 2 that H1b asked for, and it is above 32,768 for all three models on Dolly, where no peak appears. With the SmolLM2 models on OASST1 it predicts a peak near 20,000 to 25,000 tokens, where $\eta^*$ instead keeps rising slowly. These observations suggest that a noise scale measured after the first part of the run behaves much as Li et al.~\cite{li2024surge} predict, but they come from the same data that motivated them and need a separate test. Section~\ref{sec:confirm} reports one.
 
 \subsection{Branched critical batch size}\label{sec:branched}
 
@@ -300,11 +301,87 @@ H6 & lowering $\eta$ helps the other corpora (40 of 40); raising it hurts them (
 \end{tabular}
 \end{table}
 
+\section{Confirmatory study}\label{sec:confirm}
+
+The analysis at the end of Section~\ref{sec:noise-results} found that the noise scale measured after the first quarter of the epoch tracks the fixed-data critical batch size and the location of the peak of $\eta^*$, but it was found in the same nine settings it describes. We therefore tested it on new data in a second pre-registered study. Its design and predictions were written on 9 November 2026, after every result above had been seen and before any run of the study existed, and were committed under the tag \texttt{prereg-confirm-v1} and pushed to GitHub on the same day. The first run of the study was queued two days later. GitHub records the time of the push, but the repository is private until publication, so this record is not yet public. Once the runs had started, every configuration was written and queued by the same scripts as in the main study, and nothing was decided by hand. There were no departures from the plan.
+
+\subsection{Design and predictions}
+
+In this section $\blate$ denotes the noise scale of a noise run averaged over its 25\%, 50\%, 75\% and 100\% points: the mean of $\mathrm{tr}(\Sigma)$ over these four points divided by the mean of $|G|^2$ over them. It is the 25--100\% column of Table~\ref{tab:noise}. The study has two parts.
+
+The first part adds three corpora, each trained with SmolLM2-135M. They were chosen for tasks that the main study does not cover and for sizes close to its range: Alpaca-8k, a fixed random sample of 8,000 examples from the cleaned release of the Alpaca data~\cite{taori2023alpaca}, which consists of synthetic general instructions; CodeAlpaca~\cite{chaudhary2023codealpaca}, about 20,000 instructions about code; and the training split of DialogSum~\cite{chen2021dialogsum}, in which the response is a summary of a dialogue. They have 7,000, 19,016 and 11,448 training examples and 1.01M, 1.20M and 0.41M supervised tokens per epoch. DialogSum is smaller than any main corpus, and at $B = 32{,}768$ one epoch of it is 12 steps. Formatting, held-out sets, truncation and training follow Section~\ref{sec:setup}. Each setting went through the main-grid procedure unchanged: the $B = 4{,}096$ column over two decades, the seven-by-seven grid centred by the square-root rule, three seeds at the best point of each column and its two neighbours, and one noise run at $B = 4{,}096$ and $\eta^*(4{,}096)$ with measurements at 0, 25, 50, 75 and 100\% of the epoch. Because a software restriction on the GPU machine blocked the library used to download the corpora, all corpora were read in this study from files exported by the same code on another machine; for the three main corpora these files reproduce the splits of the main study exactly.
+
+The second part repeats the noise run of each of the nine original settings with a new seed (seed 2, or seed 3 for SmolLM2-360M with Dolly, which already had two), at the same batch size and learning rate, with measurements at 0, 2, 5, 10, 25, 50, 75 and 100\% of the epoch.
+
+The predictions, as fixed in the plan, were the following.
+\begin{description}
+\item[C1 (critical batch size from the late noise scale).] In each new setting the fixed-data critical batch size lies within a factor of 2 of $\blate/3$, that is, in $[\blate/6, \blate/1.5]$. A critical batch size at the top of the grid counts as consistent if $\blate/1.5 \ge 32{,}768$. Supported if this holds in all three new settings, falsified if it fails in two or more. In the nine original settings it holds in eight.
+\item[C2 (peak).] If $\blate \le 16{,}384$, $\eta^*(B)$ has an interior peak, that is, its largest value is at a batch size below 32,768, and this batch size is within a factor of 2 of $\blate$. If $\blate \ge 65{,}536$, there is no interior peak. Between these values no prediction is made. Falsified if it fails in any new setting where it applies. It holds wherever it applies in the original settings.
+\item[C3 (square-root rule).] The exponent fitted over the columns with $B \le 4{,}096$ lies in $[0.40, 0.70]$ in each new setting. Falsified if it fails in two or more. In the original settings it ranged from 0.46 to 0.65.
+\item[C4 (replication).] With the new noise runs of the nine original settings: (a) $\blate$ is within a factor of 2 of its original value in at least 8 of the 9 settings; (b) $\bsimple$ at the 25\% point is at least 4 times its first-step value in at least 7 of 9; (c) $|G|^2$ at the 5\% point is at most a fifth of its first-step value in at least 7 of 9, which tests whether the mean gradient collapses during or just after warmup; (d) C1, computed with the new $\blate$ and the existing fixed-data critical batch size, holds in at least 7 of 9.
+\end{description}
+
+\subsection{Results on the new corpora}
+
+\begin{table}[t]
+\centering
+\caption{Predictions C1 to C3 on the three new corpora (SmolLM2-135M). $\blate$: late noise scale in supervised tokens (k $=1{,}000$). Interval: $[\blate/6, \blate/1.5]$, the range predicted by C1 for the fixed-data CBS. Peak: the batch size with the largest $\eta^*$, if it is below 32,768. C2 applies only where $\blate \le 16{,}384$ or $\blate \ge 65{,}536$. $\alpha_{\le 4\mathrm{k}}$: exponent over $B \le 4{,}096$ with its 68\% interval; C3 requires it to lie in $[0.40, 0.70]$.}
+\label{tab:confirm-new}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrcrcrclc}
+\toprule
+corpus & $\blate$ & interval & CBS & C1 & peak & C2 & $\alpha_{\le 4\mathrm{k}}$ & C3 \\
+\midrule
+\input{tables/confirm_new.tex}
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/confirm.pdf}
+\caption{The three new corpora. Top: $\eta^*(B)/\eta^*(4{,}096)$ with 68\% intervals; dashed, the square-root rule; dotted, $\blate$. Bottom: held-out loss at $\eta^*(B)$ minus the lowest such loss, with $\epsilon = 0.005$ dashed. The shaded band is the interval that C1 predicts for the fixed-data CBS, and the circled point is the measured CBS. The vertical scales of the lower panels differ. Tick labels use k $=1{,}024$.}
+\label{fig:confirm}
+\end{figure}
+
+The three new grids contain 276 runs. One diverged (DialogSum at $B = 8{,}192$ and the largest learning rate of its column), no column needed an extension, and at the best learning rate of each column at most 0.06\% of the steps were skipped by the loss scaler. Table~\ref{tab:confirm-new} and Figure~\ref{fig:confirm} give the results.
+
+The fixed-data critical batch size is 8,192 tokens on Alpaca-8k and CodeAlpaca and 1,024 on DialogSum. All three lie inside their predicted intervals, so C1 is supported. The ratio of $\blate$ to the critical batch size is 3.9, 3.4 and 6.0, within the range of 2.4 to 6.4 found in the main study. The DialogSum result is close to the edge in two ways: its interval begins at 1,019 tokens, and its critical batch size stops at 1,024 because the loss at 2,048 is 0.0061 nats above the loss at 512, just over $\epsilon$. With $\epsilon = 0.01$ the three critical batch sizes are 16,384, 16,384 and 2,048, which also lie inside the intervals.
+
+C2 applies only to DialogSum, the one new setting with $\blate$ below 16,384 (about 6,100 tokens). Its $\eta^*$ peaks at $B = 4{,}096$, at 0.67 of $\blate$, and falls by a factor of 1.7 from there to 32,768, so C2 holds where it applies; the GSM8K peaks of the main study lie at 0.62 to 0.83 of $\blate$. On Alpaca-8k and CodeAlpaca, $\blate$ is about 32,000 and 28,000 tokens, in the range where the plan makes no prediction. On both corpora $\eta^*$ rises across the whole grid, by factors of 5.6 and 6.3 between 512 and 32,768, and the rise slows above 8,192 tokens; on CodeAlpaca $\eta^*$ is almost the same at 16,384 and 32,768.
+
+The exponent below 4,096 tokens is 0.56, 0.63 and 0.44, inside $[0.40, 0.70]$ in all three settings, so C3 is not falsified. The DialogSum value is close to the lower bound, and its interval extends below it.
+
+The noise scale has the same shape along the epoch as in the main study. Between the first step and the 25\% point, $|G|^2$ falls by a factor of 27 to 82 on the new corpora while $\mathrm{tr}(\Sigma)$ falls by a factor of 1.4 to 2.6, and $\bsimple$ at the first step is between 110 and 3,300 tokens. DialogSum also has the largest loss penalty at large batches of any setting in this paper, 0.20 nats above its best value at $B = 32{,}768$, against at most 0.15 nats on GSM8K.
+
+\subsection{Replication of the noise runs}
+
+\begin{table}[t]
+\centering
+\caption{Repeated noise runs for the nine original settings (C4). $\blate$ of the original seed-1 run and of the new run, in supervised tokens (k $=1{,}000$); for SmolLM2-360M with Dolly the original value is that of seed 1, while Table~\ref{tab:noise} averages seeds 1 and 2, which gives the same outcome for (a). (a) Ratio of the new to the original $\blate$, required to lie in $[0.5, 2]$. (b) $\bsimple$ at 25\% divided by $\bsimple$ at the first step, required to be at least 4. (c) $|G|^2$ at the first step divided by $|G|^2$ at 5\%, required to be at least 5. CBS: fixed-data critical batch size from Table~\ref{tab:main} ($^{*}$: top of the grid, a lower bound). (d) Whether the CBS lies in $[\blate/6, \blate/1.5]$ for the new $\blate$. $^{\circ}$: fails its criterion. Criterion (a) must hold in at least 8 of the nine settings and (b) to (d) in at least 7.}
+\label{tab:confirm-rep}
+\small
+\begin{tabular}{llrrrrrrc}
+\toprule
+ & & \multicolumn{2}{c}{$\blate$} & & & & & \\
+\cmidrule(lr){3-4}
+model & corpus & original & new & (a) & (b) & (c) & CBS & (d) \\
+\midrule
+\input{tables/confirm_rep.tex}
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:confirm-rep} compares the new noise runs with the original ones. For (a), the new $\blate$ is 0.76 to 1.26 times the original value in eight settings. In SmolLM2-135M with OASST1 it is 5.2 times larger, about 127,000 against 25,000 tokens, because $|G|^2$ at the 25\% point of the new run is 0.019, less than half its value at each of the three later points; when the mean gradient is this small, one low measurement moves $\blate$ a long way. Criterion (a) needs 8 of 9 and holds with no margin. For (b), $\bsimple$ at 25\% is 8 to 93 times its first-step value in all nine settings. For (c), $|G|^2$ at the 5\% point is 9.5 to 109 times smaller than at the first step in seven settings, the minimum required. In SmolLM2-135M with Dolly it is only 3.9 times smaller at 5\% and falls by a further factor of 8 by the 10\% point, and in SmolLM2-360M with OASST1 it is 3.3 times smaller at 5\% and falls mainly between the 10\% and 25\% points. The mean gradient therefore collapses early in every setting, but not always by the end of warmup. For (d), C1 with the new $\blate$ holds in eight settings and fails in SmolLM2-135M with OASST1, the setting whose $\blate$ changed fivefold. The one setting in which C1 failed with the original $\blate$, Qwen3-0.6B with Dolly, passes with the new value.
+
+\subsection{Summary}
+
+All four predictions met their pre-registered criteria: C1 is supported, C2 and C3 are not falsified, and the four parts of C4 hold. The support is not equally strong everywhere. C2 could be tested in only one setting, two parts of C4 met their thresholds exactly, and the critical batch size and exponent of DialogSum lie close to the edges of their predicted ranges. The intervals are also wide by design: C1 allows a factor of 4, while the critical batch size is resolved to a factor of 2. Together with the main study, $\blate/3$ lies within a factor of 2 of the fixed-data critical batch size in 11 of 12 settings with the original noise runs and in 11 of 12 with the repeated ones, but a different setting fails each time. The error of a single noise run, up to a factor of 5 between seeds here, is therefore a large part of the error of the prediction. The new corpora were trained with the smallest model only.
+
 \section{Discussion}\label{sec:discussion}
 
 \subsection{Practical guidance}
 
-For full SFT of models of this size on corpora of this size, the results suggest a simple procedure. Up to about 4,096 supervised tokens per step, scaling the learning rate with the square root of the batch size is accurate to within the uncertainty of our fits, so a learning rate tuned at one small batch size transfers to another. The batch size can be raised up to the critical batch size at almost no cost in held-out loss, which in our settings is 8,192 tokens per step or more for the two instruction corpora and 2,048 to 8,192 for GSM8K. Beyond 4,096 tokens the square-root rule overestimates the best learning rate, mildly on the instruction corpora and strongly on GSM8K, where the best learning rate falls. Because small batches are slower per token on our hardware, accumulating gradients up to the critical batch size saves time without a measurable loss penalty, which differs from the advice of Marek et al.~\cite{marek2025} to avoid gradient accumulation; their setting assumes that a single micro-batch already saturates the device. Finally, if performance outside the fine-tuning data matters, the learning rate that is optimal on the fine-tuning corpus is not the right target at large batch sizes, since raising it harms the other corpora more than it helps the fine-tuning corpus.
+For full SFT of models of this size on corpora of this size, the results suggest a simple procedure. Up to about 4,096 supervised tokens per step, scaling the learning rate with the square root of the batch size is accurate to within the uncertainty of our fits, so a learning rate tuned at one small batch size transfers to another. The batch size can be raised up to the critical batch size at almost no cost in held-out loss, which in our settings is 8,192 tokens per step or more for the two instruction corpora and 2,048 to 8,192 for GSM8K. Beyond 4,096 tokens the square-root rule overestimates the best learning rate, mildly on the instruction corpora and strongly on GSM8K, where the best learning rate falls. Because small batches are slower per token on our hardware, accumulating gradients up to the critical batch size saves time without a measurable loss penalty, which differs from the advice of Marek et al.~\cite{marek2025} to avoid gradient accumulation; their setting assumes that a single micro-batch already saturates the device. When a sweep over batch sizes is too expensive, one run at a moderate batch size with noise-scale measurements after the first quarter of the epoch gives an estimate: a third of $\blate$ was within a factor of 2 of the fixed-data critical batch size in 11 of our 12 settings (Section~\ref{sec:confirm}). Finally, if performance outside the fine-tuning data matters, the learning rate that is optimal on the fine-tuning corpus is not the right target at large batch sizes, since raising it harms the other corpora more than it helps the fine-tuning corpus.
 
 \subsection{Comparison with pretraining}
 
@@ -318,7 +395,7 @@ GSM8K has the lowest noise scale in every model, both at the first step and late
 
 \subsection{Scale}
 
-All models have at most 0.6B parameters and all corpora have at most 1.07M supervised tokens, trained for one epoch. The critical batch size grows with the amount of data in pretraining~\cite{zhang2025cbs}, and larger corpora or several epochs may well give larger values. Within our size ladder the largest model comes from a different family, so a change between SmolLM2-360M and Qwen3-0.6B cannot be attributed to size alone.
+All models have at most 0.6B parameters and all corpora have at most 1.2M supervised tokens, trained for one epoch; the corpora of the confirmatory study were trained with the smallest model only. The critical batch size grows with the amount of data in pretraining~\cite{zhang2025cbs}, and larger corpora or several epochs may well give larger values. Within our size ladder the largest model comes from a different family, so a change between SmolLM2-360M and Qwen3-0.6B cannot be attributed to size alone.
 
 \subsection{What is measured}
 
@@ -326,7 +403,7 @@ We measure held-out cross-entropy only, not downstream accuracy, and many of the
 
 \subsection{Noise scale}
 
-We measure $\bsimple$, not $\bnoise$, which would require the Hessian. Each setting has a single noise run (two for the pilot setting), at one batch size and learning rate, and the four batches used for the estimate are drawn from the training set, so later measurements include data the model has already seen. The branched comparison uses a noise run at a different batch size from the branched base run.
+We measure $\bsimple$, not $\bnoise$, which would require the Hessian. In the main study each setting has a single noise run (two for the pilot setting), at one batch size and learning rate, and the repeated runs of Section~\ref{sec:confirm} show that $\blate$ from one run can be off by a factor of 5 when $|G|^2$ is small. The four batches used for the estimate are drawn from the training set, so later measurements include data the model has already seen. The branched comparison uses a noise run at a different batch size from the branched base run.
 
 \subsection{Branched runs}
 
@@ -338,11 +415,11 @@ Warmup is defined in steps, so at $B = 32{,}768$ it lasts under two steps; the $
 
 \subsection{The pre-registration}
 
-Section~\ref{sec:prereg} and Appendix~\ref{app:deviations} list the revisions made before the freeze and the eight departures made after it. Four of the later departures were decided with some results in view: the replacement of the noise-scale estimator, the choice of the third branched setting, the bracketing of the branch sweeps, and the reading of H2b across checkpoints. We have marked the analyses that were not planned as exploratory. They include the descriptive exponents below and above 4,096 tokens and every comparison of the noise scale after the first step with the critical batch size or the peak of $\eta^*$.
+Section~\ref{sec:prereg} and Appendix~\ref{app:deviations} list the revisions made before the freeze and the eight departures made after it. Four of the later departures were decided with some results in view: the replacement of the noise-scale estimator, the choice of the third branched setting, the bracketing of the branch sweeps, and the reading of H2b across checkpoints. We have marked the analyses that were not planned as exploratory. They include the descriptive exponents below and above 4,096 tokens and every comparison of the noise scale after the first step with the critical batch size or the peak of $\eta^*$ in Section~\ref{sec:results}. The confirmatory study was planned after all of these results had been seen, and its predictions were derived from them. It tests whether the pattern carries over to new corpora and to new noise runs, not whether it would have been found without looking at the data.
 
 \section{Conclusion}\label{sec:conclusion}
 
-In full-parameter SFT of three small models on three public corpora, the optimal learning rate follows the square-root rule up to about 4,096 supervised tokens per step and then grows more slowly or falls, and the held-out loss is flat to within 0.005 nats up to a critical batch size of 2,048 to 16,384 tokens, or more, depending mostly on the corpus. The critical batch size grows during training, as in pretraining. The gradient noise scale is small only at the very start of fine-tuning, so a noise scale averaged over the run is a weak guide to the critical batch size, while the noise scale later in the run appears to track both the critical batch size and the peak of the optimal learning rate; this observation was not planned and needs a confirmatory test. Neither $\beta_2$ scaling nor gradient clipping explains the batch-size dependence of the optimal learning rate. Retuning the learning rate for the batch size improves the fine-tuning corpus at the expense of other data whenever it raises the learning rate.
+In full-parameter SFT of three small models on three public corpora, the optimal learning rate follows the square-root rule up to about 4,096 supervised tokens per step and then grows more slowly or falls, and the held-out loss is flat to within 0.005 nats up to a critical batch size of 2,048 to 16,384 tokens, or more, depending mostly on the corpus. The critical batch size grows during training, as in pretraining. The gradient noise scale is small only at the very start of fine-tuning, so a noise scale averaged over the run is a weak guide to the critical batch size, while the noise scale later in the run tracks both the critical batch size and the peak of the optimal learning rate. This pattern was found after the fact. In a separate pre-registered test on three new corpora and with repeated noise runs, a third of the late noise scale was within a factor of 2 of the critical batch size in all three new settings and in 8 of the 9 original ones, and the late noise scale located the one new peak of the optimal learning rate within the predicted factor of 2. Neither $\beta_2$ scaling nor gradient clipping explains the batch-size dependence of the optimal learning rate. Retuning the learning rate for the batch size improves the fine-tuning corpus at the expense of other data whenever it raises the learning rate.
 
 The code, configurations, the frozen plan with its deviation log, and the ledgers of all runs will be released with this paper.
 
@@ -472,6 +549,21 @@ T.~Dettmers, M.~Lewis, S.~Shleifer, and L.~Zettlemoyer.
 T.~Chen, B.~Xu, C.~Zhang, and C.~Guestrin.
 \newblock Training deep nets with sublinear memory cost.
 \newblock arXiv:1604.06174, 2016.
+
+\bibitem{taori2023alpaca}
+R.~Taori, I.~Gulrajani, T.~Zhang, Y.~Dubois, X.~Li, C.~Guestrin, P.~Liang, and T.~B. Hashimoto.
+\newblock Stanford {Alpaca}: An instruction-following {LLaMA} model.
+\newblock GitHub repository, 2023.
+
+\bibitem{chaudhary2023codealpaca}
+S.~Chaudhary.
+\newblock Code {Alpaca}: An instruction-following {LLaMA} model for code generation.
+\newblock GitHub repository, 2023.
+
+\bibitem{chen2021dialogsum}
+Y.~Chen, Y.~Liu, L.~Chen, and Y.~Zhang.
+\newblock {DialogSum}: A real-life scenario dialogue summarization dataset.
+\newblock In \emph{Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021}, 2021. arXiv:2105.06762.
 
 \end{thebibliography}
 
