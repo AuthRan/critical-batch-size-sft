@@ -306,7 +306,7 @@ H6 & lowering $\eta$ helps the other corpora (40 of 40); raising it hurts them (
 
 \section{Confirmatory study}\label{sec:confirm}
 
-The analysis at the end of Section~\ref{sec:noise-results} found that the noise scale measured after the first quarter of the epoch tracks the fixed-data critical batch size and the location of the peak of $\eta^*$, but it was found in the same nine settings it describes. We therefore tested it on new data in a second pre-registered study. Its design and predictions were written on 9 November 2026, after every result above had been seen and before any run of the study existed, and were committed under the tag \texttt{prereg-confirm-v1} and pushed to GitHub on the same day. The first run of the study was queued two days later. GitHub records the time of the push, but the repository is private until publication, so this record is not yet public. Once the runs had started, every configuration was written and queued by the same scripts as in the main study, and nothing was decided by hand. There were no departures from the plan.
+The analysis at the end of Section~\ref{sec:noise-results} found that the noise scale measured after the first quarter of the epoch tracks the fixed-data critical batch size and the location of the peak of $\eta^*$, but it was found in the same nine settings it describes. We therefore tested it on new data in a second pre-registered study. Its design and predictions were written on 9 November 2026, after every result above had been seen and before any run of the study existed, and were committed under the tag \texttt{prereg-confirm-v1} and pushed to a private GitHub repository on the same day. The first run of the study was queued two days later. The public release of the code contains the same sequence of commits, with their dates, and the same tags, but with the network address, name and account name of the shared machine replaced; GitHub's record of the original push is kept in the private repository and can be shown to the editor on request. Once the runs had started, every configuration was written and queued by the same scripts as in the main study, and nothing was decided by hand. There were no departures from the plan.
 
 \subsection{Design and predictions}
 
@@ -424,7 +424,11 @@ Section~\ref{sec:prereg} and Appendix~\ref{app:deviations} list the revisions ma
 
 In full-parameter SFT of three small models on three public corpora, the optimal learning rate follows the square-root rule up to about 4,096 supervised tokens per step and then grows more slowly or falls, and the held-out loss is flat to within 0.005 nats up to a critical batch size of 2,048 to 16,384 tokens, or more, depending mostly on the corpus. The critical batch size grows during training, as in pretraining. The gradient noise scale is small only at the very start of fine-tuning, so a noise scale averaged over the run is a weak guide to the critical batch size, while the noise scale later in the run tracks both the critical batch size and the peak of the optimal learning rate. This pattern was found after the fact. In a separate pre-registered test on three new corpora and with repeated noise runs, a third of the late noise scale was within a factor of 2 of the critical batch size in all three new settings and in 8 of the 9 original ones, and the late noise scale located the one new peak of the optimal learning rate within the predicted factor of 2. Neither $\beta_2$ scaling nor gradient clipping explains the batch-size dependence of the optimal learning rate. Retuning the learning rate for the batch size improves the fine-tuning corpus at the expense of other data whenever it raises the learning rate.
 
-The code, configurations, the frozen plan with its deviation log, and the ledgers of all runs will be released with this paper.
+\ifdefined\anonsubmission
+The code, configurations, the frozen plan with its deviation log, and the ledgers of all runs are included in the supplementary material and will be released publicly.
+\else
+The code, configurations, the frozen plan with its deviation log, and the ledgers of all runs are available at \url{https://github.com/AuthRan/critical-batch-size-sft}.
+\fi
 
 \bibliographystyle{tmlr}
 \bibliography{references}
