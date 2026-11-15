@@ -10,3 +10,6 @@ paper/*.log
 paper/*.aux
 paper/*.out
 paper/main.pdf
+paper/*.bbl
+paper/*.blg
+paper/submission.pdf

@@ -110,6 +110,8 @@ python src/paper.py
 
 Reads the ledgers in `data/` (copies taken after the last run, see `data/README.md`) and writes `paper/numbers.md` and `paper/numbers.json` (every number quoted in the text), `paper/tables/*.tex` and `paper/figures/*.pdf`. `paper/main.tex` inputs the tables and figures, so after a rerun only the numbers in the prose need checking against `paper/numbers.md`. Set `PAPER_PREVIEW=<folder>` to also write PNG copies of the figures. `src/h6_transfer.py` prints the H6 table on its own.
 
+The paper uses the TMLR style (`paper/tmlr.sty`, `paper/tmlr.bst`, references in `paper/references.bib`). Compiling `paper/main.tex` gives the named preprint for arXiv; compiling `paper/submission.tex`, which defines `nonsubmission` and inputs `main.tex`, gives the anonymous version for TMLR review. With tectonic: `tectonic --keep-intermediates main.tex` (keeps `main.bbl`, which arXiv needs) and `tectonic submission.tex`, both run inside `paper/`.
+
 ## Layout
 
 - `src/data.py` — corpora, tokenisation, exact token-count step planning (no packing)
