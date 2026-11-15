@@ -125,3 +125,7 @@ The paper uses the TMLR style (`paper/tmlr.sty`, `paper/tmlr.bst`, references in
 - `src/grid_configs.py` — writes the main-grid, noise and seed-repeat configs from the scout columns
 - `tests/` — CPU tests with a tiny random model
 - `notes/` — reading notes, one file per paper
+
+## License
+
+MIT (see `LICENSE`), except `paper/tmlr.sty` and `paper/tmlr.bst`, which are copied unchanged from the TMLR style file (github.com/JmlrOrg/tmlr-style-file) under the Apache License 2.0.
